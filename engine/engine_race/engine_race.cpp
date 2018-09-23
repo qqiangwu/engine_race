@@ -5,8 +5,7 @@
 #include "replayer.h"
 
 using namespace zero_switch;
-
-namespace polar_race {
+using namespace polar_race;
 
 RetCode Engine::Open(const std::string& name, Engine** eptr)
 {
@@ -188,6 +187,3 @@ bool EngineRace::read_memfile_(const Memfile_ptr& memfile, const PolarString& ke
     *value = iter->second;
     return true;
 }
-
-}  // namespace polar_race
-
