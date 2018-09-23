@@ -1,7 +1,7 @@
 CLEAN_FILES = # deliberately empty, so we can append below.
 CXX=g++
 PLATFORM_LDFLAGS= -lpthread -lrt
-PLATFORM_CXXFLAGS= -std=c++11
+PLATFORM_CXXFLAGS= -std=c++17 -DBOOST_THREAD_PROVIDES_FUTURE -DBOOST_THREAD_PROVIDES_FUTURE_CONTINUATION -Wfatal-errors
 PROFILING_FLAGS=-pg
 OPT=
 LDFLAGS += -Wl,-rpath=$(RPATH)
@@ -46,7 +46,7 @@ INCLUDE_PATH = -I./
 
 # ---------------End Dependences----------------
 
-LIB_SOURCES := $(wildcard $(SRC_PATH)/*.cc)
+LIB_SOURCES := $(wildcard $(SRC_PATH)/*.cpp)
 
 #-----------------------------------------------
 
@@ -91,7 +91,7 @@ CXXFLAGS += $(WARNING_FLAGS) $(INCLUDE_PATH) $(PLATFORM_CXXFLAGS) $(OPT)
 
 LDFLAGS += $(PLATFORM_LDFLAGS)
 
-LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
+LIBOBJECTS = $(LIB_SOURCES:.cpp=.o)
 # if user didn't config LIBNAME, set the default
 ifeq ($(LIBNAME),)
 # we should only run benchmark in production with DEBUG_LEVEL 0

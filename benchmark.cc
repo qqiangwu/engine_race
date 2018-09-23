@@ -170,7 +170,7 @@ class MemoryChecker {
     g_max_memory = (g_max_memory >= max_memory_rss_ / (1024 * 1024)) ?
                     g_max_memory : max_memory_rss_ / (1024 * 1024);
     fprintf(stderr,
-             "MemoryChecker report: TotalOpsDone: %lu, MaxMemoryRss: %lu KB\n", 
+             "MemoryChecker report: TotalOpsDone: %lu, MaxMemoryRss: %lu KB\n",
              total_ops_done_.load(), max_memory_rss_ / 1024);
   }
 
@@ -1007,7 +1007,11 @@ int main(int argc, char** argv) {
 
   // Choose a location for the test database if none given with --db=<path>
   if (FLAGS_db == NULL) {
-      GetTestDirectory(&default_db_path);
+      auto r = GetTestDirectory(&default_db_path);
+      if (r != 0) {
+          fprintf(stderr, "Create db dir failed: %s\n", default_db_path.c_str());
+          exit(1);
+      }
       FLAGS_db = default_db_path.c_str();
   }
 

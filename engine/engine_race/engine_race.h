@@ -3,32 +3,58 @@
 #define ENGINE_RACE_ENGINE_RACE_H_
 
 #include <string>
-#include <memory>
-#include "leveldb/db.h"
+#include <mutex>
+#include <condition_variable>
 #include "include/engine.h"
+#include "core.h"
+#include "dumper.h"
 
 namespace polar_race {
 
-class EngineRace : public Engine  {
- public:
-  static RetCode Open(const std::string& name, Engine** eptr);
+using namespace zero_switch;
 
-  explicit EngineRace(const std::string& dir);
+class EngineRace: public Engine {
+public:
+    static RetCode Open(const std::string& name, Engine** eptr);
 
-  ~EngineRace();
+    explicit EngineRace(const std::string& dir);
 
-  RetCode Write(const PolarString& key,
-      const PolarString& value) override;
+    ~EngineRace();
 
-  RetCode Read(const PolarString& key,
-      std::string* value) override;
+    RetCode Write(const PolarString& key, const PolarString& value) override;
 
-  RetCode Range(const PolarString& lower,
-      const PolarString& upper,
-      Visitor &visitor) override;
+    RetCode Read(const PolarString& key, std::string* value) override;
 
- private:
-    std::unique_ptr<leveldb::DB> db_;
+    RetCode Range(const PolarString& lower, const PolarString& upper,
+            Visitor &visitor) override;
+
+private:
+    void replay_();
+    void roll_new_memfile_();
+
+    void wait_for_room_(std::unique_lock<std::mutex>& lock);
+    void submit_memfile_(const Memfile_ptr& memfile);
+
+    void append_log_(const PolarString& key, const PolarString& value);
+    void apply_(const PolarString& key, const PolarString& value);
+
+    bool read_memfile_(const Memfile_ptr& memfile, const PolarString& key, std::string* value);
+
+    void on_dump_completed_(uint64_t redo_id, uint64_t file_id);
+    void on_dump_failed_();
+    void gc_();
+
+private:
+    std::mutex mutex_;
+    std::condition_variable dump_done_;
+
+    Memfile_ptr memfile_;
+    Memfile_ptr immutable_memfile_;
+    Redo_log_ptr redolog_;
+
+    DBMeta meta_;
+    DBFile_manager dbfileMgr_;
+    Dumper dumper_;
 };
 
 }  // namespace polar_race

@@ -42,3 +42,12 @@ readrandom   :      99.903 micros/op 10009 ops/sec;   39.2 MB/s (10000 of 10000 
 Percentiles: P50: 948.85 P75: 1551.10 P99: 211216.27 P99.9: 776419.21 P99.99: 1467010.31
 
 ## v1
++ 功能
+    + 无聚合写
+    + 无缓存读
+    + 无Compaction
++ 结果
+```
+fillrandom   :    3102.406 micros/op 322 ops/sec;    1.3 MB/s
+Percentiles: P50: 658.38 P75: 6742.56 P99: 15578.89 P99.9: 58893048.13 P99.99: 238849557.52
+```

@@ -1,7 +1,7 @@
 CLEAN_FILES = # deliberately empty, so we can append below.
 CXX=g++
-PLATFORM_LDFLAGS= -lpthread -lrt -lsnappy -lz
-PLATFORM_CXXFLAGS= -std=c++11 -fno-builtin-memcmp -msse -msse4.2 
+PLATFORM_LDFLAGS= -lpthread -lrt -lsnappy -lz -lboost_thread -lboost_system
+PLATFORM_CXXFLAGS= -std=c++17 -fno-builtin-memcmp -msse -msse4.2 
 PROFILING_FLAGS=-pg
 OPT=
 LDFLAGS += -Wl,-rpath=$(RPATH)
@@ -134,5 +134,5 @@ clean:
 	find $(SRC_PATH) -maxdepth 1 -type f -regex ".*\.\(\(gcda\)\|\(gcno\)\)" -exec rm {} \;
 
 rw: all
-	rm -rf .tmp
-	sudo TEST_TMPDIR=.tmp/ ./benchmark --num=10000 --benchmarks=fillrandom,readrandom
+	sudo rm -rf .tmp
+	sudo TEST_TMPDIR=.tmp/ ./benchmark --num=10000 --benchmarks=fillrandom
