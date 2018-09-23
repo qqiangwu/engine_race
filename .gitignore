@@ -2,3 +2,4 @@
 benchmark
 .tmp
 engine/lib
+engine/engine_race/lib/
