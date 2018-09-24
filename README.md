@@ -35,11 +35,16 @@ sudo TEST_TMPDIR=./test_benchmark ./benchmark
     + write: 150MB/s
 
 ## leveldb
+```
 fillrandom   :     990.074 micros/op 1010 ops/sec;    4.0 MB/s
 Percentiles: P50: 721.23 P75: 2313.12 P99: 161971.90 P99.9: 16285714.29 P99.99: 17500351.00
 
 readrandom   :      99.903 micros/op 10009 ops/sec;   39.2 MB/s (10000 of 10000 found)
 Percentiles: P50: 948.85 P75: 1551.10 P99: 211216.27 P99.9: 776419.21 P99.99: 1467010.31
+
+Average:          DEV       tps  rd_sec/s  wr_sec/s  avgrq-sz  avgqu-sz     await     svctm     %util
+Average:          sda     83.04     96.72  46401.44    559.95      1.03     12.36      9.95     82.64
+```
 
 ## v1
 + 功能
