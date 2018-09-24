@@ -48,6 +48,11 @@ Percentiles: P50: 948.85 P75: 1551.10 P99: 211216.27 P99.9: 776419.21 P99.99: 14
     + 无Compaction
 + 结果
 ```
-fillrandom   :    3102.406 micros/op 322 ops/sec;    1.3 MB/s
-Percentiles: P50: 658.38 P75: 6742.56 P99: 15578.89 P99.9: 58893048.13 P99.99: 238849557.52
+fillrandom   :      53.465 micros/op 18703 ops/sec;   73.2 MB/s
+Percentiles: P50: 1062.33 P75: 1203.11 P99: 44562.70 P99.9: 111052.63 P99.99: 2900000.00
+```
++ 瓶颈: `sar -pd 1 10`
+```
+Average:          DEV       tps  rd_sec/s  wr_sec/s  avgrq-sz  avgqu-sz     await     svctm     %util
+Average:          sda    277.30     71.20 364848.80   1315.98    133.03    461.11      3.45     95.60
 ```

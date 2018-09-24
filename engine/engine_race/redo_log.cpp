@@ -23,9 +23,9 @@ Redo_log::~Redo_log()
 
 void Redo_log::append(const std::string_view key, const std::string_view value)
 {
-    const auto r = std::fprintf(out_, "%u%s%u%s",
-            unsigned(key.size()), key.data(),
-            unsigned(value.size()), value.data());
+    const auto r = std::fprintf(out_, "%u%.*s%u%.*s",
+            unsigned(key.size()), int(key.size()), key.data(),
+            unsigned(value.size()), int(value.size()), value.data());
     if (r < 0) {
         throw std::system_error(errno, std::system_category(), "write redo failed");
     }

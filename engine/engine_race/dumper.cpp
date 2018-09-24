@@ -49,7 +49,7 @@ void Dumper::run_(const Memfile& memfile, const uint64_t l0file)
     for (auto& x: table) {
         const auto k = x.first;
         const auto v = x.second;
-        const auto rc = std::fprintf(file, "%u%s%u%s", unsigned(k->size()), k->data(), unsigned(v->size()), v->data());
+        const auto rc = std::fprintf(file, "%u%s%u%s", unsigned(k->size()), k->c_str(), unsigned(v->size()), v->c_str());
         if (rc < 0) {
             std::fclose(file);
             throw std::system_error(errno, std::system_category());
