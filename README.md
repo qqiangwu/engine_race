@@ -61,3 +61,27 @@ Percentiles: P50: 1062.33 P75: 1203.11 P99: 44562.70 P99.9: 111052.63 P99.99: 29
 Average:          DEV       tps  rd_sec/s  wr_sec/s  avgrq-sz  avgqu-sz     await     svctm     %util
 Average:          sda    277.30     71.20 364848.80   1315.98    133.03    461.11      3.45     95.60
 ```
+
+## v2
++ 同步聚合写
++ 8byte key 128byte value
++ before
+```
+08:30:41 PM       DEV       tps  rd_sec/s  wr_sec/s  avgrq-sz  avgqu-sz     await     svctm     %util
+08:34:22 PM       sda    129.00      0.00 317128.00   2458.36     48.14    540.34      6.20     80.00
+
+fillrandom   :       5.666 micros/op 176485 ops/sec;   22.9 MB/s
+Percentiles: P50: 3.56 P75: 3.87 P99: 8892.35 P99.9: 26412.63 P99.99: 49807.33
+
+CPU没有打满，40%，但是带宽才用23MB
+```
++ after
+```
+fillrandom   :       2.920 micros/op 342463 ops/sec;   44.4 MB/s
+Percentiles: P50: 130.01 P75: 204.54 P99: 724.11 P99.9: 4885.75 P99.99: 12302.44
+
+08:30:41 PM       DEV       tps  rd_sec/s  wr_sec/s  avgrq-sz  avgqu-sz     await     svctm     %util
+11:42:22 PM       sda    156.00      0.00 322896.00   2069.85     63.97    483.33      5.36     83.60
+
+CPU已经70%了，但是磁盘依旧没有满，磁盘等待队列还是太长
+```

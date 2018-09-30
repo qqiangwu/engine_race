@@ -7,13 +7,14 @@
 #include <condition_variable>
 #include "include/engine.h"
 #include "core.h"
+#include "batch_commiter.h"
 #include "dumper.h"
 
 namespace polar_race {
 
 using namespace zero_switch;
 
-class EngineRace: public Engine {
+class EngineRace: public Engine, public Kv_updater {
 public:
     static RetCode Open(const std::string& name, Engine** eptr);
 
@@ -28,21 +29,23 @@ public:
     RetCode Range(const PolarString& lower, const PolarString& upper,
             Visitor &visitor) override;
 
+    void write(const std::vector<std::pair<const std::string_view, const std::string_view>>& batch) override;
+
 private:
     void replay_();
     void roll_new_memfile_();
 
-    void wait_for_room_(std::unique_lock<std::mutex>& lock);
+    void wait_for_room_();
     void submit_memfile_(const Memfile_ptr& memfile);
 
     void append_log_(const PolarString& key, const PolarString& value);
     void apply_(const PolarString& key, const PolarString& value);
 
-    bool read_memfile_(const Memfile_ptr& memfile, const PolarString& key, std::string* value);
-
     void on_dump_completed_(uint64_t redo_id, uint64_t file_id);
     void on_dump_failed_();
     void gc_();
+
+    Memfile_ptr ref_memfile_();
 
 private:
     std::mutex mutex_;
@@ -54,6 +57,8 @@ private:
 
     DBMeta meta_;
     DBFile_manager dbfileMgr_;
+
+    Batch_commiter commiter_;
     Dumper dumper_;
 };
 

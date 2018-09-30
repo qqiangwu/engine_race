@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <string>
 #include <string_view>
+#include <vector>
+#include <array>
 #include <memory>
 
 namespace zero_switch {
@@ -23,8 +25,10 @@ public:
     }
 
     void append(std::string_view key, std::string_view value);
+    void append(const std::vector<std::pair<const std::string_view, const std::string_view>>& batch);
 
 private:
+    std::array<char, 64 * 1024 * 1024> buffer_;
     const std::string  dir_;
     const std::uint64_t id_;
     const std::string  path_;

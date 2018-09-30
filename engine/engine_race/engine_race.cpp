@@ -34,6 +34,7 @@ try {
 EngineRace::EngineRace(const std::string& name)
     : meta_(name),
       dbfileMgr_(meta_),
+      commiter_(*this),
       dumper_(meta_.db())
 {
     replay_();
@@ -49,28 +50,33 @@ EngineRace::~EngineRace()
 // 3. Write a key-value pair into engine
 RetCode EngineRace::Write(const PolarString& key, const PolarString& value)
 try {
-    std::unique_lock<std::mutex> lock(mutex_);
-
-    wait_for_room_(lock);
-    append_log_(key, value);
-    apply_(key, value);
+    auto k = std::string_view(key.data(), key.size());
+    auto v = std::string_view(value.data(), value.size());
+    commiter_.submit(k, v);
 
     return kSucc;
 } catch (const std::exception& e) {
-    std::cerr << e.what() << std::endl;
+    std::cerr << __func__ << e.what() << std::endl;
 
     return kIOError;
+}
+
+// serialized by batch_commiter
+void EngineRace::write(const std::vector<std::pair<const std::string_view, const std::string_view>>& batch)
+{
+    wait_for_room_();
+
+    redolog_->append(batch);
+
+    for (auto [key, value]: batch) {
+        memfile_->add(key, value);
+    }
 }
 
 // 4. Read value of a key
 RetCode EngineRace::Read(const PolarString& key, std::string* value)
 try {
-    if (read_memfile_(memfile_, key, value)) {
-        return kSucc;
-    }
-    if (dbfileMgr_.read(std::string_view(key.data(), key.size()), value)) {
-        return kSucc;
-    }
+    // TODO
     return kNotFound;
 } catch (const std::exception& e) {
     std::cerr << e.what() << std::endl;
@@ -85,8 +91,8 @@ try {
 // upper=="" is treated as a key after all keys in the database.
 // Therefore the following call will traverse the entire database:
 //   Range("", "", visitor)
-RetCode EngineRace::Range(const PolarString& lower, const PolarString& upper,
-    Visitor &visitor) {
+RetCode EngineRace::Range(const PolarString& lower, const PolarString& upper, Visitor &visitor)
+{
   return kSucc;
 }
 
@@ -99,22 +105,27 @@ void EngineRace::replay_()
 
 void EngineRace::roll_new_memfile_()
 {
+    assert(!memfile_);
+    assert(!redolog_);
+
     memfile_ = std::make_shared<Memfile>();
     redolog_ = std::make_shared<Redo_log>(meta_.db(), meta_.next_redo_id());
 }
 
 // @pre locked
-void EngineRace::wait_for_room_(std::unique_lock<std::mutex>& lock)
+void EngineRace::wait_for_room_()
 {
-    if (memfile_->size() >= 1024) {
-        while (immutable_memfile_ && memfile_->size() >= 1024) {
+    const auto _2MB = 2 * 1024 * 1024;
+
+    if (memfile_->estimated_size() >= _2MB) {
+        std::unique_lock<std::mutex> lock(mutex_);
+
+        while (immutable_memfile_) {
             dump_done_.wait(lock);
         }
 
-        if (memfile_->size() >= 1024) {
-            submit_memfile_(memfile_);
-            roll_new_memfile_();
-        }
+        submit_memfile_(memfile_);
+        roll_new_memfile_();
     }
 }
 
@@ -135,6 +146,8 @@ void EngineRace::submit_memfile_(const Memfile_ptr& memfile)
         });
 
     immutable_memfile_ = memfile_;
+    memfile_ = nullptr;
+    redolog_ = nullptr;
 }
 
 // @pre not locked
@@ -165,25 +178,8 @@ void EngineRace::gc_()
 {
 }
 
-void EngineRace::append_log_(const PolarString& key, const PolarString& value)
+Memfile_ptr EngineRace::ref_memfile_()
 {
-    auto k = std::string_view(key.data(), key.size());
-    auto v = std::string_view(value.data(), value.size());
-    redolog_->append(k, v);
-}
-
-void EngineRace::apply_(const PolarString& key, const PolarString& value)
-{
-    memfile_->emplace(key.ToString(), value.ToString());
-}
-
-bool EngineRace::read_memfile_(const Memfile_ptr& memfile, const PolarString& key, std::string* value)
-{
-    auto iter = memfile_->find(key.ToString());
-    if (iter == memfile_->end()) {
-        return false;
-    }
-
-    *value = iter->second;
-    return true;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return memfile_;
 }

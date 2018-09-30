@@ -28,9 +28,9 @@ future<void> Dumper::submit(const Memfile& memfile, const std::uint64_t l0file)
 void Dumper::run_(const Memfile& memfile, const uint64_t l0file)
 {
     std::vector<std::pair<const std::string*, const std::string*>> table;
-    table.reserve(memfile.size());
+    table.reserve(memfile.count());
 
-    for (auto& kv: memfile) {
+    for (auto& kv: memfile.values()) {
         table.emplace_back(&kv.first, &kv.second);
     }
 
