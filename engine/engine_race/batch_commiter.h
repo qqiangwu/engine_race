@@ -48,7 +48,7 @@ private:
     std::condition_variable not_empty_;
     std::deque<Task> task_queue_;
 
-    std::atomic<bool> stopped_;
+    std::atomic<bool> stopped_ { false };
     std::thread commiter_;
 };
 

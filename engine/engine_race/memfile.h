@@ -24,7 +24,7 @@ public:
     }
 
 private:
-    std::atomic<std::uint64_t> size_;
+    std::atomic<std::uint64_t> size_ {};
 
     mutable std::mutex mutex_;
     std::unordered_map<std::string, std::string> map_;
