@@ -9,6 +9,7 @@
 #include "core.h"
 #include "batch_commiter.h"
 #include "dumper.h"
+#include "redo_alloctor.h"
 
 namespace polar_race {
 
@@ -41,11 +42,10 @@ private:
     void append_log_(const PolarString& key, const PolarString& value);
     void apply_(const PolarString& key, const PolarString& value);
 
+    // called by dumper
     void on_dump_completed_(uint64_t redo_id, uint64_t file_id);
     void on_dump_failed_();
     void gc_();
-
-    Memfile_ptr ref_memfile_();
 
 private:
     std::mutex mutex_;
@@ -60,6 +60,7 @@ private:
 
     Batch_commiter commiter_;
     Dumper dumper_;
+    Redo_allocator redo_alloctor_;
 };
 
 }  // namespace polar_race

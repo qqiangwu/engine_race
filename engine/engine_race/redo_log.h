@@ -28,7 +28,7 @@ public:
     void append(const std::vector<std::pair<std::string_view, std::string_view>>& batch);
 
 private:
-    std::array<char, 64 * 1024 * 1024> buffer_;
+    std::array<char, 64 * 1024> buffer_;
     const std::string  dir_;
     const std::uint64_t id_;
     const std::string  path_;

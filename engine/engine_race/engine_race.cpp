@@ -35,7 +35,8 @@ EngineRace::EngineRace(const std::string& name)
     : meta_(name),
       dbfileMgr_(meta_),
       commiter_(*this),
-      dumper_(meta_.db())
+      dumper_(meta_.db()),
+      redo_alloctor_(meta_)
 {
     replay_();
     roll_new_memfile_();
@@ -109,7 +110,7 @@ void EngineRace::roll_new_memfile_()
     assert(!redolog_);
 
     memfile_ = std::make_shared<Memfile>();
-    redolog_ = std::make_shared<Redo_log>(meta_.db(), meta_.next_redo_id());
+    redolog_ = redo_alloctor_.allocate();
 }
 
 // @pre locked
@@ -133,19 +134,18 @@ void EngineRace::wait_for_room_()
 void EngineRace::submit_memfile_(const Memfile_ptr& memfile)
 {
     const auto file_id = meta_.next_id();
-    const auto redo_id = redolog_->id();
     dumper_.submit(*memfile_, file_id)
-        .then([this, redo_id, file_id](auto r) {
+        .then([this, redo = std::move(redolog_), file_id](auto r) {
             try {
                 r.get();
-                this->on_dump_completed_(redo_id, file_id);
+                this->on_dump_completed_(redo->id(), file_id);
             } catch (const std::exception& e) {
                 std::cout << "dump failed: " << e.what() << std::endl;
                 this->on_dump_failed_();
             }
         });
 
-    immutable_memfile_ = memfile_;
+    std::swap(memfile_, immutable_memfile_);
     memfile_ = nullptr;
     redolog_ = nullptr;
 }
@@ -157,13 +157,15 @@ void EngineRace::on_dump_completed_(const uint64_t redo_id, const uint64_t file_
     meta_.on_dump_complete(redo_id, file_id);
     dbfileMgr_.on_dump_complete(file_id);
 
+    Memfile_ptr trash {};
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        immutable_memfile_ = nullptr;
+        std::swap(immutable_memfile_, trash);
     }
 
     dump_done_.notify_all();
-    //gc_();
+
+    // TODO: add gc
 }
 
 // @pre not locked
@@ -176,10 +178,4 @@ void EngineRace::on_dump_failed_()
 // TODO
 void EngineRace::gc_()
 {
-}
-
-Memfile_ptr EngineRace::ref_memfile_()
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-    return memfile_;
 }
