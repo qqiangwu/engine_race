@@ -12,8 +12,17 @@ namespace zero_switch {
 
 class Memfile {
 public:
+    explicit Memfile(const uint64_t redo_id)
+        : redo_id_(redo_id)
+    {
+    }
+
     std::uint64_t estimated_size() const;
     std::uint64_t count() const;
+    std::uint64_t redo_id() const
+    {
+        return redo_id_;
+    }
 
     void add(std::string_view key, std::string_view value);
 
@@ -24,7 +33,9 @@ public:
     }
 
 private:
-    std::atomic<std::uint64_t> size_;
+    const std::uint64_t redo_id_;
+
+    std::atomic<std::uint64_t> size_ {};
 
     mutable std::mutex mutex_;
     std::unordered_map<std::string, std::string> map_;

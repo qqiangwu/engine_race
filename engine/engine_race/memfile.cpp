@@ -15,8 +15,7 @@ std::uint64_t Memfile::count() const
 
 void Memfile::add(const std::string_view key, const std::string_view value)
 {
-    const auto size = key.size() + value.size();
-    size_ += size;
+    size_.fetch_add(key.size() + value.size());
 
     std::lock_guard<std::mutex> lock(mutex_);
     map_[std::string(key)] = std::string(value);

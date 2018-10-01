@@ -4,6 +4,7 @@
 
 #include <string>
 #include <mutex>
+#include <deque>
 #include <condition_variable>
 #include "include/engine.h"
 #include "core.h"
@@ -45,14 +46,15 @@ private:
     void on_dump_failed_();
     void gc_();
 
-    Memfile_ptr ref_memfile_();
+    void try_dump_();
 
 private:
+    // protecte memfiles and redolog
     std::mutex mutex_;
     std::condition_variable dump_done_;
 
     Memfile_ptr memfile_;
-    Memfile_ptr immutable_memfile_;
+    std::deque<Memfile_ptr> immutable_memfiles_;
     Redo_log_ptr redolog_;
 
     DBMeta meta_;

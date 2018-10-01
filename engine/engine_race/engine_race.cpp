@@ -108,8 +108,9 @@ void EngineRace::roll_new_memfile_()
     assert(!memfile_);
     assert(!redolog_);
 
-    memfile_ = std::make_shared<Memfile>();
-    redolog_ = std::make_shared<Redo_log>(meta_.db(), meta_.next_redo_id());
+    const auto next_redo_id = meta_.next_redo_id();
+    memfile_ = std::make_shared<Memfile>(next_redo_id);
+    redolog_ = std::make_shared<Redo_log>(meta_.db(), next_redo_id);
 }
 
 // @pre locked
@@ -120,7 +121,8 @@ void EngineRace::wait_for_room_()
     if (memfile_->estimated_size() >= _2MB) {
         std::unique_lock<std::mutex> lock(mutex_);
 
-        while (immutable_memfile_) {
+        // FIXME: make configurable
+        while (immutable_memfiles_.size() >= 4) {
             dump_done_.wait(lock);
         }
 
@@ -132,10 +134,25 @@ void EngineRace::wait_for_room_()
 // @pre locked
 void EngineRace::submit_memfile_(const Memfile_ptr& memfile)
 {
+    immutable_memfiles_.push_back(memfile_);
+    memfile_ = nullptr;
+    redolog_ = nullptr;
+
+    if (immutable_memfiles_.size() == 1) {
+        try_dump_();
+    }
+}
+
+void EngineRace::try_dump_()
+{
+    if (immutable_memfiles_.empty()) {
+        return;
+    }
+
     const auto file_id = meta_.next_id();
-    const auto redo_id = redolog_->id();
-    dumper_.submit(*memfile_, file_id)
-        .then([this, redo_id, file_id](auto r) {
+    auto imm = immutable_memfiles_.front();
+    dumper_.submit(*imm, file_id)
+        .then([this, redo_id = imm->redo_id(), file_id](auto r) {
             try {
                 r.get();
                 this->on_dump_completed_(redo_id, file_id);
@@ -144,10 +161,6 @@ void EngineRace::submit_memfile_(const Memfile_ptr& memfile)
                 this->on_dump_failed_();
             }
         });
-
-    immutable_memfile_ = memfile_;
-    memfile_ = nullptr;
-    redolog_ = nullptr;
 }
 
 // @pre not locked
@@ -159,7 +172,8 @@ void EngineRace::on_dump_completed_(const uint64_t redo_id, const uint64_t file_
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        immutable_memfile_ = nullptr;
+        immutable_memfiles_.pop_front();
+        try_dump_();
     }
 
     dump_done_.notify_all();
@@ -176,10 +190,4 @@ void EngineRace::on_dump_failed_()
 // TODO
 void EngineRace::gc_()
 {
-}
-
-Memfile_ptr EngineRace::ref_memfile_()
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-    return memfile_;
 }
