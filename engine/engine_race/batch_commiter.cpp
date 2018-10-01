@@ -1,4 +1,5 @@
 #include <iostream>
+#include <chrono>
 #include <vector>
 #include <algorithm>
 #include "engine_error.h"
@@ -21,6 +22,8 @@ try {
     for (auto& t: task_queue_) {
         t.async_result.set_exception(Task_canceled{"stopped"});
     }
+
+    task_queue_.clear();
 } catch (...) {
 }
 
@@ -28,7 +31,11 @@ void Batch_commiter::run_() noexcept
 {
     while (!stopped_) {
         try {
-            run_impl_();
+            wait_unplug_();
+
+            if (!stopped_) {
+                unplug_();
+            }
         } catch (const std::runtime_error& e) {
             std::cerr << "error: " << e.what() << std::endl;
         }
@@ -47,26 +54,34 @@ static auto build_batch(const std::vector<Task>& tasks)
     return batch;
 }
 
-void Batch_commiter::run_impl_()
+void Batch_commiter::wait_unplug_()
+{
+    std::unique_lock lock(mutex_);
+
+    using namespace std::chrono_literals;
+
+    while (!stopped_ && task_queue_.empty()) {
+        not_empty_.wait_for(lock, 3ms);
+    }
+}
+
+void Batch_commiter::unplug_()
 {
     auto tasks = fetch_batch_();
     auto batch = build_batch(tasks);
 
-    updater_.write(batch);
+    if (!batch.empty()) {
+        updater_.write(batch);
 
-    for (auto& t: tasks) {
-        t.async_result.set_value();
+        for (auto& t: tasks) {
+            t.async_result.set_value();
+        }
     }
 }
 
 std::vector<Task> Batch_commiter::fetch_batch_()
 {
     std::unique_lock<std::mutex> lock(mutex_);
-
-    while (!stopped_ && task_queue_.empty()) {
-        not_empty_.wait(lock);
-    }
-
     std::vector<Task> batch;
     batch.reserve(task_queue_.size());
     batch.assign(std::make_move_iterator(task_queue_.begin()),
@@ -81,14 +96,22 @@ void Batch_commiter::submit(const std::string_view key, const std::string_view v
     Task task { key, value };
     auto future = task.async_result.get_future();
 
-    submit_task_(std::move(task));
+    plug_(std::move(task));
 
     future.get();
 }
 
-void Batch_commiter::submit_task_(Task&& task)
+void Batch_commiter::plug_(Task&& task)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     task_queue_.push_back(std::move(task));
-    not_empty_.notify_one();
+    try_unplug_();
+}
+
+// @pre locked
+void Batch_commiter::try_unplug_()
+{
+    if (task_queue_.size() >= 32) {
+        not_empty_.notify_one();
+    }
 }

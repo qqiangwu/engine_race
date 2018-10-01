@@ -33,12 +33,13 @@ public:
     void submit(std::string_view key, std::string_view value);
 
 private:
-    void submit_task_(Task&& task);
-    void commit_();
+    void plug_(Task&& task);
+    void try_unplug_();
 
 private:
     void run_() noexcept;
-    void run_impl_();
+    void wait_unplug_();
+    void unplug_();
     std::vector<Task> fetch_batch_();
 
 private:
