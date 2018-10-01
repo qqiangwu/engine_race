@@ -25,7 +25,7 @@ public:
     }
 
     void append(std::string_view key, std::string_view value);
-    void append(const std::vector<std::pair<const std::string_view, const std::string_view>>& batch);
+    void append(const std::vector<std::pair<std::string_view, std::string_view>>& batch);
 
 private:
     std::array<char, 64 * 1024 * 1024> buffer_;

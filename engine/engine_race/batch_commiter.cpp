@@ -1,3 +1,4 @@
+#include <iostream>
 #include <vector>
 #include <algorithm>
 #include "engine_error.h"
@@ -6,87 +7,88 @@
 using namespace zero_switch;
 
 Batch_commiter::Batch_commiter(Kv_updater& updater)
-    : updater_(updater)
+    : updater_(updater),
+      commiter_([this]{ this->run_(); })
 {
 }
 
-void Batch_commiter::submit(const std::string_view key, const std::string_view value)
+Batch_commiter::~Batch_commiter() noexcept
+try {
+    stopped_ = true;
+    not_empty_.notify_one();
+    commiter_.join();
+
+    for (auto& t: task_queue_) {
+        t.async_result.set_exception(Task_canceled{"stopped"});
+    }
+} catch (...) {
+}
+
+void Batch_commiter::run_() noexcept
 {
-    Task task { key, value };
-    auto future = task.result.get_future();
-
-    plug_(std::move(task));
-
-    auto state = future.get();
-    switch (state) {
-    case Task_state::done:
-        return;
-
-    case Task_state::canceled:
-        throw Task_canceled{"submit failed"};
-
-    case Task_state::leader:
-        commit_();
-        return;
-
-    default:
-        throw std::runtime_error("unknown error in submit");
+    while (!stopped_) {
+        try {
+            run_impl_();
+        } catch (const std::runtime_error& e) {
+            std::cerr << "error: " << e.what() << std::endl;
+        }
     }
 }
 
-// TODO: flow control
-void Batch_commiter::plug_(Task&& task)
+static auto build_batch(const std::vector<Task>& tasks)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    tasks_.push_back(std::move(task));
-    if (tasks_.size() == 1) {
-        tasks_.front().result.set_value(Task_state::leader);
-    }
-}
-
-static inline auto build_batch(const std::vector<Task>& tasks)
-{
-    std::vector<std::pair<const std::string_view, const std::string_view>> batch;
+    std::vector<std::pair<std::string_view, std::string_view>> batch;
     batch.reserve(tasks.size());
 
-    for (auto& task: tasks) {
-        batch.push_back(std::make_pair(task.key, task.value));
+    for (auto& t: tasks) {
+        batch.emplace_back(t.key, t.value);
     }
 
     return batch;
 }
 
-static void wakeup(std::vector<Task>& tasks)
+void Batch_commiter::run_impl_()
 {
-    std::for_each(tasks.begin() + 1, tasks.end(), [](auto& t){
-        t.result.set_value(Task_state::done);
-    });
-}
-
-void Batch_commiter::commit_()
-{
-    std::vector<Task> tasks;
-
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        tasks.assign(std::make_move_iterator(tasks_.begin()),
-                     std::make_move_iterator(tasks_.end()));
-    }
-
+    auto tasks = fetch_batch_();
     auto batch = build_batch(tasks);
+
     updater_.write(batch);
 
-    unplug_(tasks.size());
-    wakeup(tasks);
+    for (auto& t: tasks) {
+        t.async_result.set_value();
+    }
 }
 
-void Batch_commiter::unplug_(const int finished)
+std::vector<Task> Batch_commiter::fetch_batch_()
 {
-    assert(finished >= 0);
+    std::unique_lock<std::mutex> lock(mutex_);
 
-    std::lock_guard<std::mutex> lock(mutex_);
-    tasks_.erase(tasks_.begin(), tasks_.begin() + finished);
-    if (!tasks_.empty()) {
-        tasks_.front().result.set_value(Task_state::leader);
+    while (!stopped_ && task_queue_.empty()) {
+        not_empty_.wait(lock);
     }
+
+    std::vector<Task> batch;
+    batch.reserve(task_queue_.size());
+    batch.assign(std::make_move_iterator(task_queue_.begin()),
+                 std::make_move_iterator(task_queue_.end()));
+    task_queue_.clear();
+
+    return batch;
+}
+
+void Batch_commiter::submit(const std::string_view key, const std::string_view value)
+{
+    Task task { key, value };
+    auto future = task.async_result.get_future();
+
+    submit_task_(std::move(task));
+
+    future.get();
+}
+
+void Batch_commiter::submit_task_(Task&& task)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    task_queue_.push_back(std::move(task));
+    not_empty_.notify_one();
 }

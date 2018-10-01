@@ -62,7 +62,7 @@ try {
 }
 
 // serialized by batch_commiter
-void EngineRace::write(const std::vector<std::pair<const std::string_view, const std::string_view>>& batch)
+void EngineRace::write(const std::vector<std::pair<std::string_view, std::string_view>>& batch)
 {
     wait_for_room_();
 

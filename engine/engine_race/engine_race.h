@@ -29,7 +29,7 @@ public:
     RetCode Range(const PolarString& lower, const PolarString& upper,
             Visitor &visitor) override;
 
-    void write(const std::vector<std::pair<const std::string_view, const std::string_view>>& batch) override;
+    void write(const std::vector<std::pair<std::string_view, std::string_view>>& batch) override;
 
 private:
     void replay_();

@@ -40,7 +40,7 @@ void Redo_log::append(const std::string_view key, const std::string_view value)
     }
 }
 
-void Redo_log::append(const std::vector<std::pair<const std::string_view, const std::string_view>>& batch)
+void Redo_log::append(const std::vector<std::pair<std::string_view, std::string_view>>& batch)
 {
     for (auto [key, value]: batch) {
         const auto r = std::fprintf(out_, "%u%.*s%u%.*s",

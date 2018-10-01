@@ -3,46 +3,53 @@
 
 #include <deque>
 #include <mutex>
+#include <condition_variable>
+#include <thread>
+#include <atomic>
 #include <string_view>
 #include <boost/thread/future.hpp>
 
 namespace zero_switch {
 
-enum class Task_state {
-    done,
-    leader,
-    canceled
-};
-
 struct Task {
     std::string_view key;
     std::string_view value;
-    boost::promise<Task_state> result;
+    boost::promise<void> async_result;
 };
 
 class Kv_updater {
 public:
     virtual ~Kv_updater() = default;
 
-    virtual void write(const std::vector<std::pair<const std::string_view, const std::string_view>>& batch) = 0;
+    virtual void write(const std::vector<std::pair<std::string_view, std::string_view>>& batch) = 0;
 };
 
 class Batch_commiter {
 public:
     explicit Batch_commiter(Kv_updater& updater);
 
-    void submit(const std::string_view key, const std::string_view value);
+    ~Batch_commiter() noexcept;
+
+    void submit(std::string_view key, std::string_view value);
 
 private:
-    void plug_(Task&& task);
-    void unplug_(const int finished);
+    void submit_task_(Task&& task);
     void commit_();
+
+private:
+    void run_() noexcept;
+    void run_impl_();
+    std::vector<Task> fetch_batch_();
 
 private:
     Kv_updater& updater_;
 
     std::mutex mutex_;
-    std::deque<Task> tasks_;
+    std::condition_variable not_empty_;
+    std::deque<Task> task_queue_;
+
+    std::atomic<bool> stopped_;
+    std::thread commiter_;
 };
 
 }
