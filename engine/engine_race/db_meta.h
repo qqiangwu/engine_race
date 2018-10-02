@@ -25,10 +25,10 @@ public:
     std::vector<std::uint64_t> sorted_tables() const;
 
 public:
-    void on_dump_complete(std::uint64_t redo_id, std::uint64_t file_id);
+    void checkpoint(std::uint64_t redo_id, std::uint64_t file_id);
 
 private:
-    void checkpoint_();
+    void checkpoint_(const uint64_t redo_id, const std::vector<uint64_t>& sstables);
 
 private:
     const std::string db_;

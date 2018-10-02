@@ -3,6 +3,7 @@
 #include <cerrno>
 #include <system_error>
 #include "db_meta.h"
+#include "engine_error.h"
 
 using namespace zero_switch;
 
@@ -13,10 +14,8 @@ DBMeta::DBMeta(const std::string& db)
       next_file_id_(1)
 {
     const auto r = ::mkdir(db.c_str(), 0755);
-    if (r != 0) {
-        if (errno != EEXIST) {
-            throw std::system_error(errno, std::system_category(), "init db failed: " + db);
-        }
+    if (r != 0 && errno != EEXIST) {
+        throw_sys_error<IO_error>("init db failed: " + db);
     }
 }
 
@@ -48,20 +47,23 @@ std::vector<std::uint64_t> DBMeta::sorted_tables() const
     return sorted_tables_;
 }
 
-void DBMeta::on_dump_complete(const std::uint64_t redo_id, const std::uint64_t file_id)
+void DBMeta::checkpoint(std::uint64_t redo_id, std::uint64_t file_id)
 {
     std::lock_guard<std::mutex> lock(mutex_);
 
     assert(redo_id > redo_id_);
     assert(redo_id < next_redo_id_);
 
-    redo_id_ = redo_id;
-    sorted_tables_.push_back(file_id);
+    auto sstables = sorted_tables_;
+    sstables.push_back(file_id);
+    checkpoint_(redo_id, sstables);
 
-    checkpoint_();
+    using std::swap;
+    swap(redo_id_, redo_id);
+    swap(sorted_tables_, sstables);
 }
 
-void DBMeta::checkpoint_()
+void DBMeta::checkpoint_(const uint64_t redo_id, const std::vector<uint64_t>& sstables)
 {
     // TODO checkpoint
 }

@@ -3,13 +3,15 @@
 
 #include <cstdint>
 #include <atomic>
-#include <mutex>
 #include <memory>
-#include <unordered_map>
+#include <shared_mutex>
 #include <string_view>
+#include <map>
+#include "config.h"
 
 namespace zero_switch {
 
+// strong guarantee
 class Memfile {
 public:
     std::uint64_t estimated_size() const;
@@ -17,8 +19,10 @@ public:
 
     void add(std::string_view key, std::string_view value);
 
+    optional<std::string> read(string_view key);
+
     // not thread safe
-    const std::unordered_map<std::string, std::string>& values() const
+    const std::map<std::string, std::string>& values() const
     {
         return map_;
     }
@@ -26,8 +30,8 @@ public:
 private:
     std::atomic<std::uint64_t> size_ {};
 
-    mutable std::mutex mutex_;
-    std::unordered_map<std::string, std::string> map_;
+    mutable std::shared_mutex mutex_;
+    std::map<std::string, std::string> map_;
 };
 
 using Memfile_ptr = std::shared_ptr<Memfile>;

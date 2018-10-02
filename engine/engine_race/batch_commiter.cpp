@@ -1,4 +1,4 @@
-#include <iostream>
+#include <cstdio>
 #include <chrono>
 #include <vector>
 #include <algorithm>
@@ -19,8 +19,12 @@ try {
     not_empty_.notify_one();
     commiter_.join();
 
-    for (auto& t: task_queue_) {
-        t.async_result.set_exception(Task_canceled{"stopped"});
+    try {
+        throw Server_busy{"stopped"};
+    } catch (...) {
+        for (auto& t: task_queue_) {
+            t.async_result.set_exception(std::current_exception());
+        }
     }
 
     task_queue_.clear();
@@ -37,7 +41,7 @@ void Batch_commiter::run_() noexcept
                 unplug_();
             }
         } catch (const std::runtime_error& e) {
-            std::cerr << "error: " << e.what() << std::endl;
+            fprintf(stderr, "[commit] failed: %s\n", e.what());
         }
     }
 }
@@ -68,13 +72,22 @@ void Batch_commiter::wait_unplug_()
 void Batch_commiter::unplug_()
 {
     auto tasks = fetch_batch_();
-    auto batch = build_batch(tasks);
 
-    if (!batch.empty()) {
-        updater_.write(batch);
+    try {
+        auto batch = build_batch(tasks);
+
+        if (!batch.empty()) {
+            updater_.write(batch);
+
+            for (auto& t: tasks) {
+                t.async_result.set_value();
+            }
+        }
+    } catch (const std::exception& e) {
+        fprintf(stderr, "%s failed: %s\n", __func__, e.what());
 
         for (auto& t: tasks) {
-            t.async_result.set_value();
+            t.async_result.set_exception(std::current_exception());
         }
     }
 }

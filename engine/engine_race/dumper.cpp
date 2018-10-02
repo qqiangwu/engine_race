@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <chrono>
 #include <vector>
 #include <memory>
 #include <system_error>
@@ -27,17 +28,9 @@ future<void> Dumper::submit(const Memfile& memfile, const std::uint64_t l0file)
 
 void Dumper::run_(const Memfile& memfile, const uint64_t l0file)
 {
-    std::vector<std::pair<const std::string*, const std::string*>> table;
-    table.reserve(memfile.count());
+    std::fprintf(stdout, "dump start: mem=%llu\n", (unsigned long long)l0file);
 
-    for (auto& kv: memfile.values()) {
-        table.emplace_back(&kv.first, &kv.second);
-    }
-
-    std::sort(table.begin(), table.end(), [](const auto a, const auto b){
-        return *a.first < *b.first;
-    });
-
+    const auto start = std::chrono::system_clock::now();
     const std::string filename = db_ + '/' + std::to_string(l0file) + ".db";
     char buffer[1 * 1024 * 1024];
     FILE* file = std::fopen(filename.c_str(), "w");
@@ -46,10 +39,10 @@ void Dumper::run_(const Memfile& memfile, const uint64_t l0file)
     }
 
     std::setvbuf(file, buffer, _IOFBF, sizeof(buffer));
-    for (auto& x: table) {
+    for (auto& x: memfile.values()) {
         const auto k = x.first;
         const auto v = x.second;
-        const auto rc = std::fprintf(file, "%u%s%u%s", unsigned(k->size()), k->c_str(), unsigned(v->size()), v->c_str());
+        const auto rc = std::fprintf(file, "%u%s%u%s", unsigned(k.size()), k.c_str(), unsigned(v.size()), v.c_str());
         if (rc < 0) {
             std::fclose(file);
             throw std::system_error(errno, std::system_category());
@@ -60,4 +53,10 @@ void Dumper::run_(const Memfile& memfile, const uint64_t l0file)
     if (rc != 0) {
         throw std::system_error(errno, std::system_category());
     }
+
+    using namespace std::chrono;
+    const auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
+    std::fprintf(stdout, "dump finished: mem=%llu, elapse=%llums\n",
+            (unsigned long long)l0file,
+            (unsigned long long)elapsed.count());
 }

@@ -3,13 +3,15 @@
 #define ENGINE_RACE_ENGINE_RACE_H_
 
 #include <string>
-#include <mutex>
 #include <condition_variable>
+#include <shared_mutex>
+#include <functional>
 #include "include/engine.h"
 #include "core.h"
 #include "batch_commiter.h"
 #include "dumper.h"
 #include "redo_alloctor.h"
+#include "snapshot.h"
 
 namespace polar_race {
 
@@ -21,7 +23,7 @@ public:
 
     explicit EngineRace(const std::string& dir);
 
-    ~EngineRace();
+    ~EngineRace() noexcept;
 
     RetCode Write(const PolarString& key, const PolarString& value) override;
 
@@ -42,25 +44,30 @@ private:
     void append_log_(const PolarString& key, const PolarString& value);
     void apply_(const PolarString& key, const PolarString& value);
 
+    Snapshot snapshot_() const;
+
     // called by dumper
-    void on_dump_completed_(uint64_t redo_id, uint64_t file_id);
-    void on_dump_failed_();
+    void on_dump_completed_(uint64_t redo_id, uint64_t file_id) noexcept;
+    void on_dump_failed_() noexcept;
     void gc_();
 
 private:
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::condition_variable dump_done_;
 
     Memfile_ptr memfile_;
     Memfile_ptr immutable_memfile_;
     Redo_log_ptr redolog_;
+    bool health_ = true;
+    bool fatal_error_ = false;
+    std::function<void()> fatal_error_fix_;
 
     DBMeta meta_;
     DBFile_manager dbfileMgr_;
 
-    Batch_commiter commiter_;
-    Dumper dumper_;
     Redo_allocator redo_alloctor_;
+    std::unique_ptr<Batch_commiter> commiter_;
+    std::unique_ptr<Dumper> dumper_;
 };
 
 }  // namespace polar_race

@@ -5,16 +5,16 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
+#include <future>
 #include <atomic>
 #include <string_view>
-#include <boost/thread/future.hpp>
 
 namespace zero_switch {
 
 struct Task {
     std::string_view key;
     std::string_view value;
-    boost::promise<void> async_result;
+    std::promise<void> async_result;
 };
 
 class Kv_updater {
@@ -27,7 +27,6 @@ public:
 class Batch_commiter {
 public:
     explicit Batch_commiter(Kv_updater& updater);
-
     ~Batch_commiter() noexcept;
 
     void submit(std::string_view key, std::string_view value);

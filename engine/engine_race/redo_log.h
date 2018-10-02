@@ -8,9 +8,12 @@
 #include <vector>
 #include <array>
 #include <memory>
+#include "config.h"
 
 namespace zero_switch {
 
+// basic gurantee
+// @throws Io_error if failed to perform io
 class Redo_log {
 public:
     Redo_log(const std::string& dir, std::uint64_t id);
@@ -24,8 +27,8 @@ public:
         return id_;
     }
 
-    void append(std::string_view key, std::string_view value);
-    void append(const std::vector<std::pair<std::string_view, std::string_view>>& batch);
+    void append(string_view key, string_view value);
+    void append(const std::vector<std::pair<string_view, string_view>>& batch);
 
 private:
     std::array<char, 64 * 1024> buffer_;

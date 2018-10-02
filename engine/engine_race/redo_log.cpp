@@ -1,5 +1,6 @@
 #include <system_error>
 #include <cerrno>
+#include "engine_error.h"
 #include "redo_log.h"
 
 using namespace zero_switch;
@@ -11,19 +12,21 @@ Redo_log::Redo_log(const std::string& dir, const std::uint64_t id)
       out_(std::fopen(path_.c_str(), "w"))
 {
     if (!out_) {
-        throw std::system_error(errno, std::system_category(), "open redo failed:" + path_);
+        throw_sys_error<IO_error>("open redo failed:" + path_);
     }
 
     const auto r = std::setvbuf(out_, buffer_.data(), _IOFBF, buffer_.size());
     if (r != 0) {
-        throw std::system_error(errno, std::system_category(), "setvbuf failed:" + path_);
+        throw_sys_error<IO_error>("setvbuf failed:" + path_);
     }
 }
 
 Redo_log::~Redo_log()
 {
-    std::fclose(out_);
-    out_ = nullptr;
+    if (out_) {
+        std::fclose(out_);
+        out_ = nullptr;
+    }
 }
 
 void Redo_log::append(const std::string_view key, const std::string_view value)
@@ -32,11 +35,11 @@ void Redo_log::append(const std::string_view key, const std::string_view value)
             unsigned(key.size()), int(key.size()), key.data(),
             unsigned(value.size()), int(value.size()), value.data());
     if (r < 0) {
-        throw std::system_error(errno, std::system_category(), "write redo failed");
+        throw_sys_error<IO_error>("write redo failed" + path_);
     }
 
     if (std::fflush(out_) != 0) {
-        throw std::system_error(errno, std::system_category(), "flush redo failed");
+        throw_sys_error<IO_error>("flush redo failed:" + path_);
     }
 }
 
@@ -47,11 +50,11 @@ void Redo_log::append(const std::vector<std::pair<std::string_view, std::string_
                 unsigned(key.size()), int(key.size()), key.data(),
                 unsigned(value.size()), int(value.size()), value.data());
         if (r < 0) {
-            throw std::system_error(errno, std::system_category(), "write redo failed");
+            throw_sys_error<IO_error>("write redo failed" + path_);
         }
     }
 
     if (std::fflush(out_) != 0) {
-        throw std::system_error(errno, std::system_category(), "flush redo failed");
+        throw_sys_error<IO_error>("flush redo failed:" + path_);
     }
 }

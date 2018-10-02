@@ -819,8 +819,10 @@ class Benchmark {
 
       int64_t rand_num = key_gens->Next();
       GenerateKeyFromInt(rand_num, &key);
-      ret = db_->Write(polar_race::PolarString(key.data(), key.size()),
-          gen.Generate(value_size_));
+      do {
+        ret = db_->Write(polar_race::PolarString(key.data(), key.size()), gen.Generate(value_size_));
+      } while (ret == polar_race::RetCode::kTimedOut);
+
       if (ret != polar_race::RetCode::kSucc) {
         fprintf(stderr, "write error: %d\n", ret);
         exit(1);

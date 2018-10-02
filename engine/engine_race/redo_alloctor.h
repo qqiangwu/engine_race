@@ -9,6 +9,7 @@ namespace zero_switch {
 
 class DBMeta;
 
+// strong guarantee
 class Redo_allocator {
 public:
     explicit Redo_allocator(DBMeta& meta);

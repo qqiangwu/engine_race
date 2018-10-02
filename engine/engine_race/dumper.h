@@ -10,17 +10,10 @@
 
 namespace zero_switch {
 
-class Queue_full_error : public std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
-
 class Dumper {
 public:
-    Dumper(const std::string& db);
+    explicit Dumper(const std::string& db);
 
-    /**
-     * @throws Queue_full_error if too many submits
-     */
     boost::future<void> submit(const Memfile& memfile, std::uint64_t file_id);
 
 private:
