@@ -1,4 +1,3 @@
-#include <cstdio>
 #include <chrono>
 #include <vector>
 #include <memory>
@@ -12,6 +11,11 @@ using namespace boost;
 Dumper::Dumper(const std::string& db)
     : db_(db), executor_(1)
 {
+}
+
+Dumper::~Dumper()
+{
+    kvlog.info("dumper destroyed");
 }
 
 future<void> Dumper::submit(const Memfile& memfile, const std::uint64_t l0file)
@@ -28,7 +32,7 @@ future<void> Dumper::submit(const Memfile& memfile, const std::uint64_t l0file)
 
 void Dumper::run_(const Memfile& memfile, const uint64_t l0file)
 {
-    std::fprintf(stdout, "dump start: mem=%llu\n", (unsigned long long)l0file);
+    kvlog.info("dump start: mem={}", l0file);
 
     const auto start = std::chrono::system_clock::now();
     const std::string filename = db_ + '/' + std::to_string(l0file) + ".db";
@@ -56,7 +60,5 @@ void Dumper::run_(const Memfile& memfile, const uint64_t l0file)
 
     using namespace std::chrono;
     const auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
-    std::fprintf(stdout, "dump finished: mem=%llu, elapse=%llums\n",
-            (unsigned long long)l0file,
-            (unsigned long long)elapsed.count());
+    kvlog.info("dump finished: mem={}, elapse={}ms", l0file, elapsed.count());
 }

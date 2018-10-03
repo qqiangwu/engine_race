@@ -1,7 +1,7 @@
-#include <cstdio>
 #include <chrono>
 #include <vector>
 #include <algorithm>
+#include "config.h"
 #include "engine_error.h"
 #include "batch_commiter.h"
 
@@ -28,7 +28,10 @@ try {
     }
 
     task_queue_.clear();
+
+    kvlog.info("batch_commiter destroyed");
 } catch (...) {
+    kvlog.critical("batch_commiter destroyed");
 }
 
 void Batch_commiter::run_() noexcept
@@ -40,8 +43,8 @@ void Batch_commiter::run_() noexcept
             if (!stopped_) {
                 unplug_();
             }
-        } catch (const std::runtime_error& e) {
-            fprintf(stderr, "[commit] failed: %s\n", e.what());
+        } catch (const std::exception& e) {
+            kvlog.error("[commit] failed: %s", e.what());
         }
     }
 }
@@ -84,7 +87,7 @@ void Batch_commiter::unplug_()
             }
         }
     } catch (const std::exception& e) {
-        fprintf(stderr, "%s failed: %s\n", __func__, e.what());
+        kvlog.error("unplug failed: error={}, size={}", e.what(), tasks.size());
 
         for (auto& t: tasks) {
             t.async_result.set_exception(std::current_exception());

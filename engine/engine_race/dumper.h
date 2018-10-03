@@ -13,6 +13,7 @@ namespace zero_switch {
 class Dumper {
 public:
     explicit Dumper(const std::string& db);
+    ~Dumper() noexcept;
 
     boost::future<void> submit(const Memfile& memfile, std::uint64_t file_id);
 

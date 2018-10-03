@@ -1,21 +1,10 @@
 // Copyright [2018] Alibaba Cloud All rights reserved
-#include <cstdio>
-#include <iostream>
 #include <string_view>
 #include "engine_race.h"
 #include "replayer.h"
 
 using namespace zero_switch;
 using namespace polar_race;
-
-RetCode Engine::Open(const std::string& name, Engine** eptr)
-{
-    return EngineRace::Open(name, eptr);
-}
-
-Engine::~Engine()
-{
-}
 
 /*
  * Complete the functions below to implement you own engine
@@ -28,7 +17,7 @@ try {
 
     return kSucc;
 } catch (const std::exception& e) {
-    fprintf(stderr, "Open %s failed: %s\n", name.c_str(), e.what());
+    kvlog.error("Open %s failed: %s", name.c_str(), e.what());
     return kIOError;
 }
 
@@ -47,7 +36,7 @@ EngineRace::EngineRace(const std::string& name)
 // TODO elegant exit
 EngineRace::~EngineRace() noexcept
 {
-    fprintf(stdout, "destroy now\n");
+    kvlog.info("destroy engine");
 
     dumper_.reset();
     commiter_.reset();
@@ -64,7 +53,7 @@ try {
 } catch (const Server_busy&) {
     return kTimedOut;
 } catch (const std::exception& e) {
-    fprintf(stderr, "EngineRace::Write failed: %s\n", e.what());
+    kvlog.error("EngineRace::Write failed: %s", e.what());
     return kIOError;
 }
 
@@ -79,7 +68,7 @@ void EngineRace::write(const std::vector<std::pair<string_view, string_view>>& b
             memfile_->add(key, value);
         }
     } catch (...) {
-        fprintf(stderr, "failed in wal and memfile, db is in unknown state\n");
+        kvlog.error("failed in wal and memfile, db is in unknown state");
         health_ = false;
         throw;
     }
@@ -95,7 +84,7 @@ try {
     }
     return v? kSucc: kNotFound;
 } catch (const std::exception& e) {
-    fprintf(stderr, "EngineRace::Read failed: %s\n", e.what());
+    kvlog.error("EngineRace::Read failed: %s", e.what());
 
     return kIOError;
 }
@@ -140,14 +129,14 @@ void EngineRace::wait_for_room_()
     std::unique_lock lock(mutex_);
     if (fatal_error_) {
         if (fatal_error_fix_) {
-            fprintf(stderr, "fatal_error: try fix\n");
+            kvlog.critical("fatal_error: try fix");
             fatal_error_fix_();
         }
         if (fatal_error_) {
             throw Server_internal_error{"fatal_error state"};
         }
     } else if (!memfile_) {
-        fprintf(stderr, "memfile is null: mem=%p, redo=%p\n", memfile_.get(), redolog_.get());
+        kvlog.warn("memfile is null: mem={}, redo={}", !!memfile_.get(), !!redolog_.get());
         roll_new_memfile_();
     } else if (!health_ || memfile_->estimated_size() >= _2MB) {
         using namespace std::chrono;
@@ -178,7 +167,7 @@ void EngineRace::submit_memfile_(const Memfile_ptr& memfile)
                 r.get();
                 this->on_dump_completed_(redo->id(), file_id);
             } catch (const std::exception& e) {
-                fprintf(stderr, "dump failed: %s\n", e.what());
+                kvlog.error("dump failed: %s", e.what());
                 this->on_dump_failed_();
             }
         });
@@ -222,7 +211,7 @@ try {
 
         swap(fatal_error_fix_, fix);
     } catch (...) {
-        fprintf(stderr, "dump callback fatal error, never recovers\n");
+        kvlog.critical("dump callback fatal error, never recovers");
     }
 }
 
