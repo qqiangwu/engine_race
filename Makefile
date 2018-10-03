@@ -135,4 +135,5 @@ clean:
 
 rw: all
 	sudo rm -rf .tmp
+	sudo rm engine.log
 	sudo TEST_TMPDIR=.tmp/ ./benchmark --num=1000000 --benchmarks=fillrandom --value_size=128

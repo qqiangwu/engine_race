@@ -5,6 +5,8 @@
 
 using namespace zero_switch;
 using namespace polar_race;
+using namespace std::chrono;
+using namespace std::chrono_literals;
 
 /*
  * Complete the functions below to implement you own engine
@@ -47,9 +49,19 @@ RetCode EngineRace::Write(const PolarString& key, const PolarString& value)
 try {
     auto k = std::string_view(key.data(), key.size());
     auto v = std::string_view(value.data(), value.size());
-    commiter_->submit(k, v);
+    auto fut = commiter_->submit(k, v);
 
-    return kSucc;
+    auto status = fut.wait_for(10ms);
+    switch (status) {
+    case std::future_status::timeout:
+        return kTimedOut;
+
+    case std::future_status::ready:
+        return kSucc;
+
+    default:
+        return kIOError;
+    }
 } catch (const Server_busy&) {
     return kTimedOut;
 } catch (const std::exception& e) {
@@ -139,8 +151,6 @@ void EngineRace::wait_for_room_()
         kvlog.warn("memfile is null: mem={}, redo={}", !!memfile_.get(), !!redolog_.get());
         roll_new_memfile_();
     } else if (!health_ || memfile_->estimated_size() >= _2MB) {
-        using namespace std::chrono;
-        using namespace std::chrono_literals;
         const auto deadline = std::chrono::system_clock::now() + 10ms;
 
         while (immutable_memfile_) {

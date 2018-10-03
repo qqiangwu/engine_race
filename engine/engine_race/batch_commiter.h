@@ -29,7 +29,7 @@ public:
     explicit Batch_commiter(Kv_updater& updater);
     ~Batch_commiter() noexcept;
 
-    void submit(std::string_view key, std::string_view value);
+    std::future<void> submit(std::string_view key, std::string_view value);
 
 private:
     void plug_(Task&& task);

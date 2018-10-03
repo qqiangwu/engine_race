@@ -107,14 +107,14 @@ std::vector<Task> Batch_commiter::fetch_batch_()
     return batch;
 }
 
-void Batch_commiter::submit(const std::string_view key, const std::string_view value)
+std::future<void> Batch_commiter::submit(const std::string_view key, const std::string_view value)
 {
     Task task { key, value };
     auto future = task.async_result.get_future();
 
     plug_(std::move(task));
 
-    future.get();
+    return future;
 }
 
 void Batch_commiter::plug_(Task&& task)
