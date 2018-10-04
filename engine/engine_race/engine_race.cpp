@@ -129,10 +129,8 @@ void EngineRace::roll_new_memfile_()
     auto memfile = std::make_shared<Memfile>(redolog->id());
 
     if (memfile_) {
-        auto immutable_memfiles = immutable_memfile_;
-        immutable_memfiles.emplace_back(memfile_);
-
-        swap(immutable_memfile_, immutable_memfiles);
+        // all or nothing
+        immutable_memfile_.emplace_back(memfile_);
     }
 
     swap(memfile_, memfile);
@@ -165,7 +163,9 @@ void EngineRace::wait_for_room_()
         }
 
         roll_new_memfile_();
-        schedule_dump_();
+        if (immutable_memfile_.size() == 1) {
+            schedule_dump_();
+        }
     }
 }
 
