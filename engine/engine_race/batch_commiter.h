@@ -11,17 +11,22 @@
 
 namespace zero_switch {
 
+enum class Task_status {
+    done,
+    server_busy
+};
+
 struct Task {
     std::string_view key;
     std::string_view value;
-    std::promise<void> async_result;
+    std::promise<Task_status> async_result;
 };
 
 class Kv_updater {
 public:
     virtual ~Kv_updater() = default;
 
-    virtual void write(const std::vector<std::pair<std::string_view, std::string_view>>& batch) = 0;
+    virtual bool write(const std::vector<std::pair<std::string_view, std::string_view>>& batch) = 0;
 };
 
 class Batch_commiter {
@@ -29,7 +34,7 @@ public:
     explicit Batch_commiter(Kv_updater& updater);
     ~Batch_commiter() noexcept;
 
-    std::future<void> submit(std::string_view key, std::string_view value);
+    std::future<Task_status> submit(std::string_view key, std::string_view value);
 
 private:
     void plug_(Task&& task);

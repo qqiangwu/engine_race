@@ -19,12 +19,8 @@ try {
     not_empty_.notify_one();
     commiter_.join();
 
-    try {
-        throw Server_busy{"stopped"};
-    } catch (...) {
-        for (auto& t: task_queue_) {
-            t.async_result.set_exception(std::current_exception());
-        }
+    for (auto& t: task_queue_) {
+        t.async_result.set_value(Task_status::server_busy);
     }
 
     task_queue_.clear();
@@ -72,29 +68,6 @@ void Batch_commiter::wait_unplug_()
     }
 }
 
-void Batch_commiter::unplug_()
-{
-    auto tasks = fetch_batch_();
-
-    try {
-        auto batch = build_batch(tasks);
-
-        if (!batch.empty()) {
-            updater_.write(batch);
-
-            for (auto& t: tasks) {
-                t.async_result.set_value();
-            }
-        }
-    } catch (const std::exception& e) {
-        kvlog.error("unplug failed: error={}, size={}", e.what(), tasks.size());
-
-        for (auto& t: tasks) {
-            t.async_result.set_exception(std::current_exception());
-        }
-    }
-}
-
 std::vector<Task> Batch_commiter::fetch_batch_()
 {
     std::unique_lock<std::mutex> lock(mutex_);
@@ -107,7 +80,30 @@ std::vector<Task> Batch_commiter::fetch_batch_()
     return batch;
 }
 
-std::future<void> Batch_commiter::submit(const std::string_view key, const std::string_view value)
+void Batch_commiter::unplug_()
+{
+    auto tasks = fetch_batch_();
+
+    try {
+        auto batch = build_batch(tasks);
+
+        if (!batch.empty()) {
+            const auto done = updater_.write(batch);
+
+            for (auto& t: tasks) {
+                t.async_result.set_value(done? Task_status::done: Task_status::server_busy);
+            }
+        }
+    } catch (const std::exception& e) {
+        kvlog.error("unplug failed: error={}, size={}", e.what(), tasks.size());
+
+        for (auto& t: tasks) {
+            t.async_result.set_exception(std::current_exception());
+        }
+    }
+}
+
+std::future<Task_status> Batch_commiter::submit(const std::string_view key, const std::string_view value)
 {
     Task task { key, value };
     auto future = task.async_result.get_future();

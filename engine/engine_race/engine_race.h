@@ -33,13 +33,13 @@ public:
     RetCode Range(const PolarString& lower, const PolarString& upper,
             Visitor &visitor) override;
 
-    void write(const std::vector<std::pair<std::string_view, std::string_view>>& batch) override;
+    bool write(const std::vector<std::pair<std::string_view, std::string_view>>& batch) override;
 
 private:
     void replay_();
-    void roll_new_memfile_();
+    void switch_memfile_();
 
-    void wait_for_room_();
+    bool wait_for_room_();
     void schedule_dump_() noexcept;
 
     void append_log_(const PolarString& key, const PolarString& value);
@@ -57,9 +57,8 @@ private:
     std::condition_variable dump_done_;
 
     Memfile_ptr memfile_;
-    std::deque<Memfile_ptr> immutable_memfile_;
+    std::deque<Memfile_ptr> immutable_memfiles_;
     Redo_log_ptr redolog_;
-    bool health_ = true;
     bool fatal_error_ = false;
     std::function<void()> fatal_error_fix_;
 

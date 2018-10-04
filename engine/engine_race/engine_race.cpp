@@ -33,7 +33,7 @@ EngineRace::EngineRace(const std::string& name)
       executor_(std::make_unique<boost::basic_thread_pool>(1))
 {
     replay_();
-    roll_new_memfile_();
+    switch_memfile_();
 }
 
 // 2. Close engine
@@ -54,38 +54,38 @@ try {
     auto v = std::string_view(value.data(), value.size());
     auto fut = commiter_->submit(k, v);
 
-    auto status = fut.wait_for(10ms);
-    switch (status) {
+    switch (fut.wait_for(10ms)) {
     case std::future_status::timeout:
         return kTimedOut;
 
     case std::future_status::ready:
-        return kSucc;
+        return fut.get() == Task_status::done? kSucc: kTimedOut;
 
     default:
         return kIOError;
     }
-} catch (const Server_busy&) {
-    return kTimedOut;
 } catch (const std::exception& e) {
     kvlog.error("EngineRace::Write failed: {}", e.what());
     return kIOError;
 }
 
 // serialized by batch_commiter
-void EngineRace::write(const std::vector<std::pair<string_view, string_view>>& batch)
+bool EngineRace::write(const std::vector<std::pair<string_view, string_view>>& batch)
 {
-    wait_for_room_();
+    if (!wait_for_room_()) {
+        return false;
+    }
+
     redolog_->append(batch);
 
     try {
-        for (auto [key, value]: batch) {
-            memfile_->add(key, value);
-        }
+        memfile_->add(batch);
+        return true;
     } catch (...) {
-        kvlog.error("failed in wal and memfile, db is in unknown state");
-        health_ = false;
-        throw;
+        // we can never recover in this case, terminate is the only choice
+        kvlog.critical("failed in wal and memfile, db is in unknown state");
+        kvlog.flush();
+        std::terminate();
     }
 }
 
@@ -123,23 +123,22 @@ void EngineRace::replay_()
     replayer.replay();
 }
 
-void EngineRace::roll_new_memfile_()
+void EngineRace::switch_memfile_()
 {
     auto redolog = redo_alloctor_.allocate();
     auto memfile = std::make_shared<Memfile>(redolog->id());
 
     if (memfile_) {
         // all or nothing
-        immutable_memfile_.emplace_back(memfile_);
+        immutable_memfiles_.emplace_back(memfile_);
     }
 
     swap(memfile_, memfile);
     swap(redolog_, redolog);
-    health_ = true;
 }
 
 // @pre locked
-void EngineRace::wait_for_room_()
+bool EngineRace::wait_for_room_()
 {
     const auto _2MB = 2 * 1024 * 1024;
 
@@ -152,34 +151,36 @@ void EngineRace::wait_for_room_()
         if (fatal_error_) {
             throw Server_internal_error{"fatal_error state"};
         }
-    } else if (!health_ || memfile_->estimated_size() >= _2MB) {
+    } else if (memfile_->estimated_size() >= _2MB) {
         const auto deadline = std::chrono::system_clock::now() + 10ms;
 
-        while (immutable_memfile_.size() >= 32) {
+        while (immutable_memfiles_.size() >= 32) {
             const auto status = dump_done_.wait_until(lock, deadline);
             if (status == std::cv_status::timeout) {
-                throw Server_busy{"background dump is ongoing for a long time"};
+                return false;
             }
         }
 
-        roll_new_memfile_();
-        if (immutable_memfile_.size() == 1) {
+        switch_memfile_();
+        if (immutable_memfiles_.size() == 1) {
             schedule_dump_();
         }
     }
+
+    return true;
 }
 
 // @pre locked
 void EngineRace::schedule_dump_() noexcept
 try {
-    if (immutable_memfile_.empty()) {
+    if (immutable_memfiles_.empty()) {
         return;
     }
 
     const auto file_id = meta_.next_id();
-    auto memfile = immutable_memfile_.front();
+    auto memfile = immutable_memfiles_.front();
 
-    kvlog.info("schedule dump: memfile={}, immutable_size={}", memfile->redo_id(), immutable_memfile_.size());
+    kvlog.info("schedule dump: memfile={}, immutable_size={}", memfile->redo_id(), immutable_memfiles_.size());
     dumper_->submit(*memfile, file_id)
         .then([this, redo_id = memfile->redo_id(), file_id](auto r) {
             try {
@@ -207,7 +208,7 @@ try {
 
     {
         std::unique_lock lock(mutex_);
-        immutable_memfile_.pop_front();
+        immutable_memfiles_.pop_front();
         schedule_dump_();
     }
 
@@ -289,7 +290,7 @@ Snapshot EngineRace::snapshot_() const
         if (memfile_) {
             memfiles.push_back(memfile_);
         }
-        std::for_each(immutable_memfile_.rbegin(), immutable_memfile_.rend(), [&memfiles](auto& p){
+        std::for_each(immutable_memfiles_.rbegin(), immutable_memfiles_.rend(), [&memfiles](auto& p){
             memfiles.push_back(p);
         });
     }

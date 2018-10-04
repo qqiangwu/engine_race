@@ -13,12 +13,6 @@ public:
     using std::system_error::system_error;
 };
 
-// server busy
-class Server_busy: public std::runtime_error {
-public:
-    using std::runtime_error::runtime_error;
-};
-
 class Server_internal_error: public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;

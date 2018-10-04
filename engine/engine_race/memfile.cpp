@@ -24,12 +24,31 @@ void Memfile::add(const string_view key, const string_view value)
     size_ += size;
 
     std::lock_guard lock(mutex_);
-    auto iter = map_.find(std::string(key));
+    auto iter = map_.find(key);
     if (iter == map_.end()) {
         map_.emplace(std::string(key), std::string(value));
     } else {
         iter->second = std::string(value);
     }
+}
+
+void Memfile::add(const std::vector<std::pair<string_view, string_view>>& batch)
+{
+    std::uint64_t size = 0;
+
+    std::lock_guard lock(mutex_);
+    for (auto [k, v]: batch) {
+        size += k.size() + v.size();
+
+        auto iter = map_.find(k);
+        if (iter == map_.end()) {
+            map_.emplace(std::string(k), std::string(v));
+        } else {
+            iter->second = std::string(v);
+        }
+    }
+
+    size_ += size;
 }
 
 optional<std::string> Memfile::read(const string_view key)
