@@ -1,5 +1,6 @@
 // Copyright [2018] Alibaba Cloud All rights reserved
 #include <string_view>
+#include <boost/filesystem.hpp>
 #include "engine_race.h"
 #include "replayer.h"
 
@@ -19,7 +20,7 @@ try {
 
     return kSucc;
 } catch (const std::exception& e) {
-    kvlog.error("Open %s failed: %s", name.c_str(), e.what());
+    kvlog.error("Open {} failed: {}", name.c_str(), e.what());
     return kIOError;
 }
 
@@ -28,7 +29,8 @@ EngineRace::EngineRace(const std::string& name)
       dbfileMgr_(meta_),
       redo_alloctor_(meta_),
       commiter_(std::make_unique<Batch_commiter>(*this)),
-      dumper_(std::make_unique<Dumper>(meta_.db()))
+      dumper_(std::make_unique<Dumper>(meta_.db())),
+      executor_(std::make_unique<boost::basic_thread_pool>(1))
 {
     replay_();
     roll_new_memfile_();
@@ -40,6 +42,7 @@ EngineRace::~EngineRace() noexcept
 {
     kvlog.info("destroy engine");
 
+    executor_.reset();
     dumper_.reset();
     commiter_.reset();
 }
@@ -65,7 +68,7 @@ try {
 } catch (const Server_busy&) {
     return kTimedOut;
 } catch (const std::exception& e) {
-    kvlog.error("EngineRace::Write failed: %s", e.what());
+    kvlog.error("EngineRace::Write failed: {}", e.what());
     return kIOError;
 }
 
@@ -96,7 +99,7 @@ try {
     }
     return v? kSucc: kNotFound;
 } catch (const std::exception& e) {
-    kvlog.error("EngineRace::Read failed: %s", e.what());
+    kvlog.error("EngineRace::Read failed: {}", e.what());
 
     return kIOError;
 }
@@ -122,11 +125,15 @@ void EngineRace::replay_()
 
 void EngineRace::roll_new_memfile_()
 {
-    assert(!memfile_);
-    assert(!redolog_);
-
-    auto memfile = std::make_shared<Memfile>();
     auto redolog = redo_alloctor_.allocate();
+    auto memfile = std::make_shared<Memfile>(redolog->id());
+
+    if (memfile_) {
+        auto immutable_memfiles = immutable_memfile_;
+        immutable_memfiles.emplace_back(memfile_);
+
+        swap(immutable_memfile_, immutable_memfiles);
+    }
 
     swap(memfile_, memfile);
     swap(redolog_, redolog);
@@ -147,46 +154,46 @@ void EngineRace::wait_for_room_()
         if (fatal_error_) {
             throw Server_internal_error{"fatal_error state"};
         }
-    } else if (!memfile_) {
-        kvlog.warn("memfile is null: mem={}, redo={}", !!memfile_.get(), !!redolog_.get());
-        roll_new_memfile_();
     } else if (!health_ || memfile_->estimated_size() >= _2MB) {
         const auto deadline = std::chrono::system_clock::now() + 10ms;
 
-        while (immutable_memfile_) {
+        while (immutable_memfile_.size() >= 32) {
             const auto status = dump_done_.wait_until(lock, deadline);
             if (status == std::cv_status::timeout) {
                 throw Server_busy{"background dump is ongoing for a long time"};
             }
         }
 
-        submit_memfile_(memfile_);
+        roll_new_memfile_();
+        schedule_dump_();
     }
 }
 
 // @pre locked
-void EngineRace::submit_memfile_(const Memfile_ptr& memfile)
-{
-    assert(memfile_);
-    assert(redolog_);
+void EngineRace::schedule_dump_() noexcept
+try {
+    if (immutable_memfile_.empty()) {
+        return;
+    }
 
     const auto file_id = meta_.next_id();
-    dumper_->submit(*memfile_, file_id)
-        .then([this, redo = std::move(redolog_), file_id](auto r) {
+    auto memfile = immutable_memfile_.front();
+
+    kvlog.info("schedule dump: memfile={}, immutable_size={}", memfile->redo_id(), immutable_memfile_.size());
+    dumper_->submit(*memfile, file_id)
+        .then([this, redo_id = memfile->redo_id(), file_id](auto r) {
             try {
                 r.get();
-                this->on_dump_completed_(redo->id(), file_id);
+                this->on_dump_completed_(redo_id, file_id);
             } catch (const std::exception& e) {
-                kvlog.error("dump failed: %s", e.what());
+                kvlog.error("dump failed: {}", e.what());
                 this->on_dump_failed_();
             }
         });
-
-    swap(memfile_, immutable_memfile_);
-    memfile_ = nullptr;
-    redolog_ = nullptr;
-
-    roll_new_memfile_();
+} catch (const std::exception& e) {
+    kvlog.critical("schedule dump failed: {}", e.what());
+} catch (...) {
+    kvlog.critical("schedule dump failed: unknown error");
 }
 
 // @pre not locked
@@ -198,15 +205,15 @@ try {
     meta_.checkpoint(redo_id, file_id);
     dbfileMgr_.apply(std::move(files));
 
-    Memfile_ptr trash {};
     {
         std::unique_lock lock(mutex_);
-        swap(immutable_memfile_, trash);
+        immutable_memfile_.pop_front();
+        schedule_dump_();
     }
 
     dump_done_.notify_all();
-
-    // TODO: add gc
+    //executor_->submit([this]{ gc_(); });
+    gc_();
 } catch (...) {
     try {
         std::lock_guard lock(mutex_);
@@ -228,13 +235,47 @@ try {
 // @pre not locked
 void EngineRace::on_dump_failed_() noexcept
 {
-    std::terminate();
+    std::lock_guard lock(mutex_);
+    schedule_dump_();
 }
 
 // serialized by dumper
-// TODO
-void EngineRace::gc_()
-{
+void EngineRace::gc_() noexcept
+try {
+    namespace fs = boost::filesystem;
+
+    const auto current_redo_id = meta_.current_redo_id();
+    const auto maxfile_to_gc = 8;
+    std::vector<fs::path> to_be_deleted;
+    to_be_deleted.reserve(maxfile_to_gc);
+
+    for (auto& p: fs::directory_iterator(meta_.db())) {
+        try {
+            if (p.path().extension() == ".redo") {
+                const auto stem = p.path().stem().string();
+                const auto redo_id = std::stoull(stem);
+                if (redo_id < current_redo_id) {
+                    to_be_deleted.push_back(p.path());
+                    if (to_be_deleted.size() == maxfile_to_gc) {
+                        break;
+                    }
+                }
+            }
+        } catch (const std::logic_error& e) {
+            kvlog.error("bad path: path={}", p.path().string());
+        }
+    }
+
+    for (auto& p: to_be_deleted) {
+        const auto r = fs::remove(p);
+        if (r) {
+            kvlog.info("redo deleted: redo={}", p.string());
+        }
+    }
+} catch (const std::exception& e) {
+    kvlog.error("gc error: {}", e.what());
+} catch (...) {
+    kvlog.error("gc unknown error");
 }
 
 Snapshot EngineRace::snapshot_() const
@@ -248,9 +289,9 @@ Snapshot EngineRace::snapshot_() const
         if (memfile_) {
             memfiles.push_back(memfile_);
         }
-        if (immutable_memfile_) {
-            memfiles.push_back(immutable_memfile_);
-        }
+        std::for_each(immutable_memfile_.rbegin(), immutable_memfile_.rend(), [&memfiles](auto& p){
+            memfiles.push_back(p);
+        });
     }
 
     sstables = dbfileMgr_.snapshot();

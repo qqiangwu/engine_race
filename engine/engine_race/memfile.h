@@ -14,8 +14,14 @@ namespace zero_switch {
 // strong guarantee
 class Memfile {
 public:
+    explicit Memfile(std::uint64_t redo_id);
+
     std::uint64_t estimated_size() const;
     std::uint64_t count() const;
+    std::uint64_t redo_id() const
+    {
+        return redo_id_;
+    }
 
     void add(std::string_view key, std::string_view value);
 
@@ -28,6 +34,7 @@ public:
     }
 
 private:
+    const std::uint64_t redo_id_;
     std::atomic<std::uint64_t> size_ {};
 
     mutable std::shared_mutex mutex_;

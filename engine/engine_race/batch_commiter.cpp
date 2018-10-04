@@ -44,7 +44,7 @@ void Batch_commiter::run_() noexcept
                 unplug_();
             }
         } catch (const std::exception& e) {
-            kvlog.error("[commit] failed: %s", e.what());
+            kvlog.error("[commit] failed: {}", e.what());
         }
     }
 }

@@ -2,6 +2,11 @@
 
 using namespace zero_switch;
 
+Memfile::Memfile(const std::uint64_t redo_id)
+    : redo_id_(redo_id)
+{
+}
+
 std::uint64_t Memfile::estimated_size() const
 {
     return size_.load();

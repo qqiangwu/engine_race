@@ -1,6 +1,6 @@
 CLEAN_FILES = # deliberately empty, so we can append below.
 CXX=g++
-PLATFORM_LDFLAGS= -lpthread -lrt -lsnappy -lz -lboost_thread -lboost_system
+PLATFORM_LDFLAGS= -lpthread -lrt -lsnappy -lz -lboost_thread -lboost_system -lboost_filesystem
 PLATFORM_CXXFLAGS= -std=c++17 -fno-builtin-memcmp -msse -msse4.2 
 PROFILING_FLAGS=-pg
 OPT=

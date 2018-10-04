@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <shared_mutex>
 #include <functional>
+#include <deque>
 #include "include/engine.h"
 #include "core.h"
 #include "batch_commiter.h"
@@ -39,7 +40,7 @@ private:
     void roll_new_memfile_();
 
     void wait_for_room_();
-    void submit_memfile_(const Memfile_ptr& memfile);
+    void schedule_dump_() noexcept;
 
     void append_log_(const PolarString& key, const PolarString& value);
     void apply_(const PolarString& key, const PolarString& value);
@@ -49,14 +50,14 @@ private:
     // called by dumper
     void on_dump_completed_(uint64_t redo_id, uint64_t file_id) noexcept;
     void on_dump_failed_() noexcept;
-    void gc_();
+    void gc_() noexcept;
 
 private:
     mutable std::mutex mutex_;
     std::condition_variable dump_done_;
 
     Memfile_ptr memfile_;
-    Memfile_ptr immutable_memfile_;
+    std::deque<Memfile_ptr> immutable_memfile_;
     Redo_log_ptr redolog_;
     bool health_ = true;
     bool fatal_error_ = false;
@@ -68,6 +69,7 @@ private:
     Redo_allocator redo_alloctor_;
     std::unique_ptr<Batch_commiter> commiter_;
     std::unique_ptr<Dumper> dumper_;
+    std::unique_ptr<boost::basic_thread_pool> executor_;
 };
 
 }  // namespace polar_race

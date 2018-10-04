@@ -131,6 +131,24 @@ Percentiles: P50: 144.10 P75: 161.63 P99: 378.77 P99.9: 846.57 P99.99: 4406.43
 
 + batch提交时，如果要切换memfile，但是后台dump长时间没有完成，则会返回timeout重试。
 + 限制batch的大小，从而避免过长，造成后续请求长时间阻塞（这个还没有做，因为现在看来，主要问题在dump上）
++ redolog的gc，做完之后，毛刺降低很明显
+    + 为了避免阻塞dumper，gc是后台完成的
+```
+fillrandom   :       3.263 micros/op 306500 ops/sec;   39.8 MB/s
+Percentiles: P50: 212.69 P75: 234.32 P99: 517.87 P99.9: 575.34 P99.99: 2764.56
+```
 
 ## v6
-这个版本实现了点读，但没有实现应用级cache，而是依赖pagecache
+之前对leveldb做性能测试感觉有问题，这里对rocksdb做下随机写与随机读的测试
+```
+fillrandom   :       5.213 micros/op 191826 ops/sec;   24.9 MB/s
+Percentiles: P50: 313.79 P75: 376.14 P99: 911.70 P99.9: 2547.00 P99.99: 8874.53
+
+readrandom   :       4.632 micros/op 215880 ops/sec;   28.0 MB/s (1000000 of 1000000 found)
+Percentiles: P50: 12.99 P75: 25.07 P99: 9606.84 P99.9: 33983.06 P99.99: 64137.13
+```
+
+测试中，发现rocksdb也有类似disk抖动的情况，之前做了多immutable memfile效果不大，但现在目测还是有必要再做一下的
+
+## v7
+Percentiles: P50: 212.69 P75: 234.32 P99: 517.87 P99.9: 575.34 P99.99: 2764.56
