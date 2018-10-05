@@ -133,7 +133,7 @@ clean:
 	find $(SRC_PATH) -maxdepth 1 -name "*.[oda]*" -exec rm -f {} \;
 	find $(SRC_PATH) -maxdepth 1 -type f -regex ".*\.\(\(gcda\)\|\(gcno\)\)" -exec rm {} \;
 
-rw: all
+rw:
 	sudo rm -rf .tmp
-	sudo rm engine.log
+	sudo rm -f engine.log
 	sudo TEST_TMPDIR=.tmp/ ./benchmark --num=1000000 --benchmarks=fillrandom --value_size=128

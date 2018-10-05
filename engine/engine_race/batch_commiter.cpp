@@ -7,10 +7,15 @@
 
 using namespace zero_switch;
 
+const auto buffer_size = 64;
+
 Batch_commiter::Batch_commiter(Kv_updater& updater)
     : updater_(updater),
       commiter_([this]{ this->run_(); })
 {
+    task_queue_.reserve(buffer_size);
+    task_in_process_.reserve(buffer_size);
+    batch_.reserve(buffer_size);
 }
 
 Batch_commiter::~Batch_commiter() noexcept
@@ -45,18 +50,6 @@ void Batch_commiter::run_() noexcept
     }
 }
 
-static auto build_batch(const std::vector<Task>& tasks)
-{
-    std::vector<std::pair<std::string_view, std::string_view>> batch;
-    batch.reserve(tasks.size());
-
-    for (auto& t: tasks) {
-        batch.emplace_back(t.key, t.value);
-    }
-
-    return batch;
-}
-
 void Batch_commiter::wait_unplug_()
 {
     std::unique_lock lock(mutex_);
@@ -68,39 +61,41 @@ void Batch_commiter::wait_unplug_()
     }
 }
 
-std::vector<Task> Batch_commiter::fetch_batch_()
+void Batch_commiter::build_batch_()
 {
-    std::unique_lock<std::mutex> lock(mutex_);
-    std::vector<Task> batch;
-    batch.reserve(task_queue_.size());
-    batch.assign(std::make_move_iterator(task_queue_.begin()),
-                 std::make_move_iterator(task_queue_.end()));
-    task_queue_.clear();
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
 
-    return batch;
+        swap(task_queue_, task_in_process_);
+    }
+
+    for (auto& t: task_in_process_) {
+        batch_.emplace_back(t.key, t.value);
+    }
 }
 
 void Batch_commiter::unplug_()
 {
-    auto tasks = fetch_batch_();
-
     try {
-        auto batch = build_batch(tasks);
+        build_batch_();
 
-        if (!batch.empty()) {
-            const auto done = updater_.write(batch);
+        if (!batch_.empty()) {
+            const auto done = updater_.write(batch_);
 
-            for (auto& t: tasks) {
+            for (auto& t: task_in_process_) {
                 t.async_result.set_value(done? Task_status::done: Task_status::server_busy);
             }
         }
     } catch (const std::exception& e) {
-        kvlog.error("unplug failed: error={}, size={}", e.what(), tasks.size());
+        kvlog.error("unplug failed: error={}, size={}", e.what(), task_in_process_.size());
 
-        for (auto& t: tasks) {
+        for (auto& t: task_in_process_) {
             t.async_result.set_exception(std::current_exception());
         }
     }
+
+    task_in_process_.clear();
+    batch_.clear();
 }
 
 std::future<Task_status> Batch_commiter::submit(const std::string_view key, const std::string_view value)

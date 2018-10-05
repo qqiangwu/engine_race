@@ -72,7 +72,7 @@ try {
 // serialized by batch_commiter
 bool EngineRace::write(const std::vector<std::pair<string_view, string_view>>& batch)
 {
-    if (!wait_for_room_()) {
+    if (!wait_for_room_(batch)) {
         return false;
     }
 
@@ -138,11 +138,9 @@ void EngineRace::switch_memfile_()
 }
 
 // @pre locked
-bool EngineRace::wait_for_room_()
+bool EngineRace::wait_for_room_(const std::vector<std::pair<string_view, string_view>>& batch)
 {
-    const auto _2MB = 2 * 1024 * 1024;
-
-    if (memfile_->estimated_size() >= _2MB) {
+    if (!memfile_->has_room_for(batch)) {
         const auto deadline = std::chrono::system_clock::now() + 10ms;
 
         std::unique_lock lock(mutex_);

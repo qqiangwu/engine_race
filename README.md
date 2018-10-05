@@ -151,4 +151,21 @@ Percentiles: P50: 12.99 P75: 25.07 P99: 9606.84 P99.9: 33983.06 P99.99: 64137.13
 测试中，发现rocksdb也有类似disk抖动的情况，之前做了多immutable memfile效果不大，但现在目测还是有必要再做一下的
 
 ## v7
-Percentiles: P50: 212.69 P75: 234.32 P99: 517.87 P99.9: 575.34 P99.99: 2764.56
+继续优化写，关键路径在batch commit上，现在CPU与磁盘都还没有用满，benchmark的线程都在阻塞等待batch commit，只能进一步提高它的性能了。从内存分配着手。
+
++ memtable内存的分配，一次性分配2MB
++ batch队列使用预分配
+
+```
+# before
+fillrandom   :       3.191 micros/op 313423 ops/sec;   40.7 MB/s
+Percentiles: P50: 212.77 P75: 234.71 P99: 374.96 P99.9: 559.79 P99.99: 3293.57
+
+# queue pre-allocation
+fillrandom   :       3.287 micros/op 304251 ops/sec;   39.5 MB/s
+Percentiles: P50: 213.37 P75: 235.32 P99: 370.05 P99.9: 574.93 P99.99: 2533.22
+
+# string pre-allocation
+fillrandom   :       3.032 micros/op 329790 ops/sec;   42.8 MB/s
+Percentiles: P50: 207.11 P75: 228.84 P99: 249.71 P99.9: 545.58 P99.99: 2433.22
+```

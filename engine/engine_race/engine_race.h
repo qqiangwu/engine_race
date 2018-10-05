@@ -39,7 +39,7 @@ private:
     void replay_();
     void switch_memfile_();
 
-    bool wait_for_room_();
+    bool wait_for_room_(const std::vector<std::pair<string_view, string_view>>& batch);
     void schedule_dump_() noexcept;
 
     void append_log_(const PolarString& key, const PolarString& value);

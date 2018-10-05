@@ -11,20 +11,6 @@
 
 namespace zero_switch {
 
-namespace detail {
-
-struct Fast_string_cmp {
-    using is_transparent = void;
-
-    template <class SV1, class SV2>
-    bool operator()(const SV1& a, const SV2& b) const
-    {
-        return string_view(a.data(), a.size()) < string_view(b.data(), b.size());
-    }
-};
-
-}
-
 // strong guarantee
 class Memfile {
 public:
@@ -37,24 +23,28 @@ public:
         return redo_id_;
     }
 
+    bool has_room_for(const std::vector<std::pair<string_view, string_view>>& batch) const;
+
     void add(string_view key, string_view value);
     void add(const std::vector<std::pair<string_view, string_view>>& batch);
 
     optional<std::string> read(string_view key);
 
     // not thread safe
-    const std::map<std::string, std::string, detail::Fast_string_cmp>& values() const
+    const std::map<string_view, string_view>& values() const
     {
         return map_;
     }
 
 private:
+    string_view clone_(string_view v);
 
+private:
     const std::uint64_t redo_id_;
-    std::atomic<std::uint64_t> size_ {};
 
     mutable std::shared_mutex mutex_;
-    std::map<std::string, std::string, detail::Fast_string_cmp> map_;
+    std::vector<char> buffer_;
+    std::map<string_view, string_view> map_;
 };
 
 using Memfile_ptr = std::shared_ptr<Memfile>;

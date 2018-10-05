@@ -1,3 +1,4 @@
+#include <numeric>
 #include "memfile.h"
 
 using namespace zero_switch;
@@ -5,11 +6,13 @@ using namespace zero_switch;
 Memfile::Memfile(const std::uint64_t redo_id)
     : redo_id_(redo_id)
 {
+    buffer_.reserve(2 * 1024 * 1024);
 }
 
 std::uint64_t Memfile::estimated_size() const
 {
-    return size_.load();
+    std::lock_guard lock(mutex_);
+    return buffer_.size();
 }
 
 std::uint64_t Memfile::count() const
@@ -18,46 +21,52 @@ std::uint64_t Memfile::count() const
     return map_.size();
 }
 
-void Memfile::add(const string_view key, const string_view value)
+bool Memfile::has_room_for(const std::vector<std::pair<string_view, string_view>>& batch) const
 {
-    const auto size = key.size() + value.size();
-    size_ += size;
+    const auto size = std::accumulate(batch.begin(), batch.end(), 0ULL, [](auto acc, auto& p){
+        return acc + p.first.size() + p.second.size();
+    });
 
     std::lock_guard lock(mutex_);
-    auto iter = map_.find(key);
-    if (iter == map_.end()) {
-        map_.emplace(std::string(key), std::string(value));
-    } else {
-        iter->second = std::string(value);
-    }
+    return buffer_.size() + size <= buffer_.capacity();
+}
+
+void Memfile::add(const string_view key, const string_view value)
+{
+    std::vector<std::pair<string_view, string_view>> batch{ std::make_pair(key, value) };
+    add(batch);
 }
 
 void Memfile::add(const std::vector<std::pair<string_view, string_view>>& batch)
 {
-    std::uint64_t size = 0;
-
     std::lock_guard lock(mutex_);
     for (auto [k, v]: batch) {
-        size += k.size() + v.size();
-
         auto iter = map_.find(k);
         if (iter == map_.end()) {
-            map_.emplace(std::string(k), std::string(v));
+            auto kk = clone_(k);
+            auto vv = clone_(v);
+            map_.emplace(kk, vv);
         } else {
-            iter->second = std::string(v);
+            iter->second = clone_(v);
         }
     }
-
-    size_ += size;
 }
 
 optional<std::string> Memfile::read(const string_view key)
 {
     std::shared_lock lock(mutex_);
-    auto iter = map_.find(std::string(key));
+    auto iter = map_.find(key);
     if (iter == map_.end()) {
         return nullopt;
     } else {
-        return { iter->second };
+        return { std::string(iter->second) };
     }
+}
+
+string_view Memfile::clone_(const string_view v)
+{
+    const auto size = buffer_.size();
+
+    buffer_.insert(buffer_.end(), v.begin(), v.end());
+    return string_view(buffer_.data() + size, v.size());
 }

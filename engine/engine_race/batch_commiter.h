@@ -1,13 +1,14 @@
 #ifndef ENGINE_RACE_ENGINE_BATCH_COMMITER_H_
 #define ENGINE_RACE_ENGINE_BATCH_COMMITER_H_
 
-#include <deque>
+#include <vector>
 #include <mutex>
 #include <condition_variable>
 #include <thread>
 #include <future>
 #include <atomic>
 #include <string_view>
+#include "config.h"
 
 namespace zero_switch {
 
@@ -44,14 +45,16 @@ private:
     void run_() noexcept;
     void wait_unplug_();
     void unplug_();
-    std::vector<Task> fetch_batch_();
+    void build_batch_();
 
 private:
     Kv_updater& updater_;
 
     std::mutex mutex_;
     std::condition_variable not_empty_;
-    std::deque<Task> task_queue_;
+    std::vector<Task> task_queue_;
+    std::vector<Task> task_in_process_;
+    std::vector<std::pair<string_view, string_view>> batch_;
 
     std::atomic<bool> stopped_ { false };
     std::thread commiter_;

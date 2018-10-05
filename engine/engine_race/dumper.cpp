@@ -46,7 +46,9 @@ void Dumper::run_(const Memfile& memfile, const uint64_t l0file)
     for (auto& x: memfile.values()) {
         const auto k = x.first;
         const auto v = x.second;
-        const auto rc = std::fprintf(file, "%u%s%u%s", unsigned(k.size()), k.c_str(), unsigned(v.size()), v.c_str());
+        const unsigned ksize = k.size();
+        const unsigned vsize = v.size();
+        const auto rc = std::fprintf(file, "%u%.*s%u%.*s", ksize, ksize, k.data(), vsize, vsize, v.data());
         if (rc < 0) {
             std::fclose(file);
             throw std::system_error(errno, std::system_category());
