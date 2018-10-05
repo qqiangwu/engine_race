@@ -169,3 +169,14 @@ Percentiles: P50: 213.37 P75: 235.32 P99: 370.05 P99.9: 574.93 P99.99: 2533.22
 fillrandom   :       3.032 micros/op 329790 ops/sec;   42.8 MB/s
 Percentiles: P50: 207.11 P75: 228.84 P99: 249.71 P99.9: 545.58 P99.99: 2433.22
 ```
+
+提升不大，top看了下，batch commiter线程已经用满了一个CPU，所以很难再提升；要么切分，要么降低batch commiter的CPU占用。
+
+暂时先不切分，考虑降低commiter的CPU占用。思路就是降低切换或者降低缓存同步开销。
+
++ 绑定CPU
+```
+fillrandom   :       2.930 micros/op 341348 ops/sec;   44.3 MB/s
+Percentiles: P50: 206.79 P75: 228.61 P99: 249.56 P99.9: 541.42 P99.99: 2150.57
+```
++ 预分配文件：现在的sys占用太高，主要因为batch度不够，所以write系统调用太多。加了之后基本没有什么提升。

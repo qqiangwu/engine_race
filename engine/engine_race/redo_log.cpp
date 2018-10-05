@@ -1,3 +1,5 @@
+#include <fcntl.h>
+#include <stdio.h>
 #include <system_error>
 #include <cerrno>
 #include "engine_error.h"
@@ -15,9 +17,14 @@ Redo_log::Redo_log(const std::string& dir, const std::uint64_t id)
         throw_sys_error<IO_error>("open redo failed:" + path_);
     }
 
-    const auto r = std::setvbuf(out_, buffer_.data(), _IOFBF, buffer_.size());
+    int r = std::setvbuf(out_, buffer_.data(), _IOFBF, buffer_.size());
     if (r != 0) {
         throw_sys_error<IO_error>("setvbuf failed:" + path_);
+    }
+
+    r = fallocate(fileno(out_), FALLOC_FL_KEEP_SIZE, 0, 2 * 1024 * 1024);
+    if (r != 0) {
+        kvlog.warn("fallocate failed: file={}", path_);
     }
 }
 
