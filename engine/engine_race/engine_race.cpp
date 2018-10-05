@@ -27,10 +27,10 @@ try {
 EngineRace::EngineRace(const std::string& name)
     : meta_(name),
       dbfileMgr_(meta_),
+      executor_(std::make_unique<boost::basic_thread_pool>(2)),
       redo_alloctor_(meta_),
       commiter_(std::make_unique<Batch_commiter>(*this)),
-      dumper_(std::make_unique<Dumper>(meta_.db())),
-      executor_(std::make_unique<boost::basic_thread_pool>(1))
+      dumper_(std::make_unique<Dumper>(meta_.db()))
 {
     replay_();
     switch_memfile_();
@@ -42,9 +42,9 @@ EngineRace::~EngineRace() noexcept
 {
     kvlog.info("destroy engine");
 
-    executor_.reset();
     dumper_.reset();
     commiter_.reset();
+    executor_.reset();
 }
 
 // 3. Write a key-value pair into engine
@@ -142,18 +142,10 @@ bool EngineRace::wait_for_room_()
 {
     const auto _2MB = 2 * 1024 * 1024;
 
-    std::unique_lock lock(mutex_);
-    if (fatal_error_) {
-        if (fatal_error_fix_) {
-            kvlog.critical("fatal_error: try fix");
-            fatal_error_fix_();
-        }
-        if (fatal_error_) {
-            throw Server_internal_error{"fatal_error state"};
-        }
-    } else if (memfile_->estimated_size() >= _2MB) {
+    if (memfile_->estimated_size() >= _2MB) {
         const auto deadline = std::chrono::system_clock::now() + 10ms;
 
+        std::unique_lock lock(mutex_);
         while (immutable_memfiles_.size() >= 32) {
             const auto status = dump_done_.wait_until(lock, deadline);
             if (status == std::cv_status::timeout) {
@@ -216,21 +208,9 @@ try {
     //executor_->submit([this]{ gc_(); });
     gc_();
 } catch (...) {
-    try {
-        std::lock_guard lock(mutex_);
-        fatal_error_ = true;
-
-        std::function<void()> fix = [this, redo_id, file_id]{
-            std::lock_guard lock(mutex_);
-            fatal_error_ = false;
-            fatal_error_fix_ = nullptr;
-            this->on_dump_completed_(redo_id, file_id);
-        };
-
-        swap(fatal_error_fix_, fix);
-    } catch (...) {
-        kvlog.critical("dump callback fatal error, never recovers");
-    }
+    executor_->submit([this, redo_id, file_id]{
+            on_dump_completed_(redo_id, file_id);
+        });
 }
 
 // @pre not locked

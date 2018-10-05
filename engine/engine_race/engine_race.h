@@ -33,7 +33,7 @@ public:
     RetCode Range(const PolarString& lower, const PolarString& upper,
             Visitor &visitor) override;
 
-    bool write(const std::vector<std::pair<std::string_view, std::string_view>>& batch) override;
+    bool write(const std::vector<std::pair<std::string_view, std::string_view>>& batch) override final;
 
 private:
     void replay_();
@@ -59,16 +59,15 @@ private:
     Memfile_ptr memfile_;
     std::deque<Memfile_ptr> immutable_memfiles_;
     Redo_log_ptr redolog_;
-    bool fatal_error_ = false;
-    std::function<void()> fatal_error_fix_;
 
     DBMeta meta_;
     DBFile_manager dbfileMgr_;
 
+    std::unique_ptr<boost::basic_thread_pool> executor_;
+
     Redo_allocator redo_alloctor_;
     std::unique_ptr<Batch_commiter> commiter_;
     std::unique_ptr<Dumper> dumper_;
-    std::unique_ptr<boost::basic_thread_pool> executor_;
 };
 
 }  // namespace polar_race
