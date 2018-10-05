@@ -13,10 +13,20 @@ Dumper::Dumper(const std::string& db)
 {
 }
 
+Dumper::~Dumper()
+{
+    std::fprintf(stderr, "Dumper destroy\n");
+}
+
 future<void> Dumper::submit(const Memfile& memfile, const std::uint64_t l0file)
 {
     packaged_task<void> task([this, &memfile, l0file]{
-        this->run_(memfile, l0file);
+        try {
+            this->run_(memfile, l0file);
+        } catch (...) {
+            fprintf(stderr, "... in dumper submit\n");
+            throw;
+        }
     });
     auto r = task.get_future();
 

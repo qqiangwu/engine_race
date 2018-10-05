@@ -1,11 +1,13 @@
 // Copyright [2018] Alibaba Cloud All rights reserved
 #include <iostream>
+#include <cstdio>
 #include <string_view>
 #include "engine_race.h"
 #include "replayer.h"
 
 using namespace zero_switch;
 using namespace polar_race;
+using namespace std::chrono_literals;
 
 RetCode Engine::Open(const std::string& name, Engine** eptr)
 {
@@ -45,6 +47,7 @@ EngineRace::EngineRace(const std::string& name)
 // TODO elegant exit
 EngineRace::~EngineRace()
 {
+    std::fprintf(stderr, "EngineRace detroy\n");
 }
 
 // 3. Write a key-value pair into engine
@@ -56,9 +59,10 @@ try {
 
     return kSucc;
 } catch (const std::exception& e) {
-    std::cerr << __func__ << e.what() << std::endl;
-
     return kIOError;
+} catch (...) {
+    std::fprintf(stderr, "EngineRace write ...\n");
+    throw;
 }
 
 // serialized by batch_commiter
@@ -121,7 +125,10 @@ void EngineRace::wait_for_room_()
         std::unique_lock<std::mutex> lock(mutex_);
 
         while (immutable_memfile_) {
-            dump_done_.wait(lock);
+            const auto cv = dump_done_.wait_for(lock, 50ms);
+            if (cv == std::cv_status::timeout) {
+                throw std::runtime_error{"timeout"};
+            }
         }
 
         submit_memfile_(memfile_);

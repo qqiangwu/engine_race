@@ -14,6 +14,8 @@ Batch_commiter::Batch_commiter(Kv_updater& updater)
 
 Batch_commiter::~Batch_commiter() noexcept
 try {
+    fprintf(stderr, "batch committer destroy\n");
+
     stopped_ = true;
     not_empty_.notify_one();
     commiter_.join();
@@ -21,11 +23,13 @@ try {
     for (auto& t: task_queue_) {
         t.async_result.set_exception(Task_canceled{"stopped"});
     }
+
+    fprintf(stderr, "batch committer destroyed\n");
 } catch (...) {
 }
 
 void Batch_commiter::run_() noexcept
-{
+try {
     while (!stopped_) {
         try {
             run_impl_();
@@ -33,6 +37,10 @@ void Batch_commiter::run_() noexcept
             std::cerr << "error: " << e.what() << std::endl;
         }
     }
+
+    fprintf(stderr, "batch commiter run end\n");
+} catch (...) {
+    fprintf(stderr, "batch_commiter run failed: ...\n");
 }
 
 static auto build_batch(const std::vector<Task>& tasks)

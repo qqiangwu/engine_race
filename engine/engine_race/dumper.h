@@ -17,6 +17,7 @@ class Queue_full_error : public std::runtime_error {
 class Dumper {
 public:
     Dumper(const std::string& db);
+    ~Dumper();
 
     /**
      * @throws Queue_full_error if too many submits
