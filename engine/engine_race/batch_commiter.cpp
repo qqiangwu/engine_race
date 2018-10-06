@@ -5,28 +5,20 @@
 #include "config.h"
 #include "engine_error.h"
 #include "batch_commiter.h"
+#include "util.h"
 
 using namespace zero_switch;
 
 const auto buffer_size = 64;
 
-static bool bind_to_core(pthread_t tid, const int core_id)
-{
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(core_id, &cpuset);
-
-    return pthread_setaffinity_np(tid, sizeof(cpu_set_t), &cpuset) == 0;
-}
-
 Batch_commiter::Batch_commiter(Kv_updater& updater)
-    : updater_(updater),
-      commiter_([this]{ this->run_(); })
+    : updater_(updater)
 {
     task_queue_.reserve(buffer_size);
     task_in_process_.reserve(buffer_size);
     batch_.reserve(buffer_size);
 
+    commiter_ = std::thread([this]{ this->run_(); });
     if (!bind_to_core(commiter_.native_handle(), 0)) {
         // best effort
         kvlog.warn("batch commiter bind cpu failed");

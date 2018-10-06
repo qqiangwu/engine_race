@@ -180,3 +180,17 @@ fillrandom   :       2.930 micros/op 341348 ops/sec;   44.3 MB/s
 Percentiles: P50: 206.79 P75: 228.61 P99: 249.56 P99.9: 541.42 P99.99: 2150.57
 ```
 + 预分配文件：现在的sys占用太高，主要因为batch度不够，所以write系统调用太多。加了之后基本没有什么提升。
++ perf了一下：显然，瓶颈在同步。但是观察到`sys_getdents`，说明gc也运行在这个线程中，考虑将dumper线程也绑定一下。
+```
+   - 43.10% entry_SYSCALL_64_fastpath                                                                                                                 ▒
+      + 35.36% sys_futex                                                                                                                              ▒
+      + 5.54% sys_getdents                                                                                                                            ▒
+      + 1.60% sys_unlink                                                                                                                              ▒
+      + 0.30% sys_open                                                                                                                                ▒
+      + 0.09% sys_fallocate                                                                                                                           ▒
+      + 0.06% sys_openat                                                                                                                              ▒
+      + 0.05% sys_write                                                                                                                               ▒
+      + 0.03% sys_exit                                                                                                                                ▒
+      + 0.02% sys_newlstat
+```
++ 绑定dumper后帮助不大，反而下降了，不用了。
